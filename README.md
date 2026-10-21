@@ -81,3 +81,7 @@ Kubernetes manifests and Helm charts live in the deployment repository.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
 - Pull requests need a review from a code owner and passing checks; they are squash-merged.
 - Record notable changes in `CHANGELOG.md`.
+
+## License
+
+[MIT](LICENSE)
