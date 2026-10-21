@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+.nyc_output/
+
+# Environment and secrets — commit only .env.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+certs/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Local runtime data
+.local/
+.tmp/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
