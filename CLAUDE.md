@@ -6,16 +6,21 @@ the "This repository" section differs.
 
 ## The project
 
-**CompanyHub** is a multi-tenant, cloud-native platform for small and
-medium-sized companies: one Hub with single sign-on, users, companies, groups
-and permissions, a shared mailbox, tasks and an activity log, into which
-independent business apps plug in (process planning, production, inventory,
-time tracking, purchasing, bookings, analytics). Each company (tenant) has
-isolated data and switches on only the apps it needs.
+**CompanyCentral** is a multi-tenant, cloud-native platform for small and
+medium-sized manufacturing companies: one Hub with users, companies,
+memberships, roles and permissions, into which business applications plug in.
+The first milestone covers work-order planning, inventory and production
+execution. Each company (tenant) has isolated data and switches on only the
+applications it needs.
 
 Built for the *Cloud Computing Services* course (RSO 2026/27, FRI UL), but
 developed as a production enterprise system: treat every change as if real
 customers depend on it.
+
+The architecture is described in
+[docs/architecture.md](https://github.com/RSOcc26/.github/blob/main/docs/architecture.md)
+and the cross-cutting decisions in
+[docs/adr](https://github.com/RSOcc26/.github/tree/main/docs/adr).
 
 ## Organization
 
@@ -24,28 +29,32 @@ deployable unit:
 
 | Repository | Role |
 |---|---|
-| `web` | Frontend: Hub shell, app UIs, shared UI kit |
-| `gateway` | API gateway: TLS, session, identity token, routing, rate limits |
-| `service-identity` | Users, companies, memberships, invitations, sessions, tokens |
-| `service-access` | App registry, apps per company, roles and access groups |
-| `service-audit` | Activity log |
-| `service-messaging` | Hub mailbox |
-| `service-tasks` | Shared tasks |
-| `.github` | Organization defaults: CONTRIBUTING, templates, profile |
+| `web` | React frontend: Hub shell, company switcher, app UIs, shared UI kit |
+| `gateway` | API gateway: authentication, tenant context, routing, rate limits |
+| `service-identity` | Users, companies (tenants), memberships, invitations |
+| `service-access` | App registry, apps per company, roles, permissions, access groups |
+| `service-workflow` | Catalog of articles and operations, projects, work orders, release |
+| `service-inventory` | Stock locations, reservations, issuing, stock movements |
+| `service-production` | Production execution, quantities, scrap, work-order completion |
+| `deploy` | Docker Compose, Kubernetes, Helm charts, monitoring |
+| `.github` | Organization defaults, reusable CI, architecture docs |
 
-Planned domain services: catalog, projects, inventory, production, time,
-purchasing, planning, booking, analytics (CQRS read model) and notification
-(serverless, event-triggered).
+Deferred (kept, not developed in the first milestone): `service-audit`,
+`service-messaging`, `service-tasks`.
 
 ## Architecture rules
 
 - Browser → Ingress → `web` (`/`) or `gateway` (`/api/*`) → services. Only the
   gateway is exposed; services are cluster-internal.
 - **Database per service** (PostgreSQL). Never read or write another service's
-  database. Inside a database, one schema per tenant, with row-level security
-  as a second line of defense. Every query is tenant-scoped.
+  database. Tenants share tables: every tenant-owned row has a `tenant_id`, and
+  PostgreSQL row-level security enforces it as a second line of defense. Every
+  query is tenant-scoped.
+- **Never trust a tenant ID from the client.** The gateway validates the user's
+  membership and forwards a signed tenant context; services take the tenant
+  only from that verified context.
 - **Synchronous REST for questions** ("is this allowed?"), **events for facts**
-  ("work order released"). Events are written to an `outbox` table in the same
+  ("work order released") over RabbitMQ. Events are written to an `outbox` table in the same
   transaction as the change; consumers are idempotent, keep a durable cursor
   and send failures to a dead-letter queue.
 - Each service publishes an **OpenAPI 3.1** contract (served at `/api-docs`)
@@ -55,8 +64,12 @@ purchasing, planning, booking, analytics (CQRS read model) and notification
   (Prometheus) and logs structured JSON that includes the request ID.
 - Configuration comes only from environment variables (12-factor);
   `.env.example` documents them with placeholder values.
-- Stack: Node.js 24 (see `.nvmrc`), PostgreSQL, Docker, Docker Compose locally,
-  Kubernetes with Helm, GitHub Actions, images in GitHub Container Registry.
+- Stack: Node.js 24 (see `.nvmrc`), React, PostgreSQL, RabbitMQ, Docker, Docker
+  Compose locally, Kubernetes with Helm, GitHub Actions, images in GitHub
+  Container Registry. No Kafka, gRPC, GraphQL or event sourcing for now.
+- Identity: custom identity vs. an external OIDC provider is an **open
+  decision** (ADR-0007). Do not implement either authentication approach
+  until it is decided.
 - Significant design decisions get an ADR in `docs/adr/`.
 
 ## Working agreement for agents
@@ -100,10 +113,14 @@ for the full team workflow.
 
 ## This repository: `service-identity`
 
-Identity service: user accounts, companies (tenants), memberships, invitations and login sessions.
+Identity service: users, companies (tenants), memberships, invitations and
+identity-related settings.
 
-Owns: users, companies, memberships, invitations, sessions. No other service reads or writes this data directly; others go
+Owns: users, companies, memberships, invitations. No other service reads or writes this data directly; others go
 through this service's API or its events.
+
+How users authenticate (custom or external OIDC) is an open decision (ADR-0007);
+keep user IDs independent of it.
 
 Layout: `src/api/` (routes, validation, OpenAPI), `src/domain/` (business
 rules, independent of HTTP and storage), `src/data/` (repositories, queries),
