@@ -39,8 +39,8 @@ deployable unit:
 | `deploy` | Docker Compose, Kubernetes, Helm charts, monitoring |
 | `.github` | Organization defaults, reusable CI, architecture docs |
 
-Deferred (kept, not developed in the first milestone): `service-audit`,
-`service-messaging`, `service-tasks`.
+An activity log, a Hub mailbox and shared tasks are out of scope for now;
+they may be added later as new services.
 
 ## Architecture rules
 
@@ -54,9 +54,9 @@ Deferred (kept, not developed in the first milestone): `service-audit`,
   membership and forwards a signed tenant context; services take the tenant
   only from that verified context.
 - **Synchronous REST for questions** ("is this allowed?"), **events for facts**
-  ("work order released") over RabbitMQ. Events are written to an `outbox` table in the same
-  transaction as the change; consumers are idempotent, keep a durable cursor
-  and send failures to a dead-letter queue.
+  ("work order released") over RabbitMQ. Events are written to an `outbox`
+  table in the same transaction as the change; consumers are idempotent, keep
+  a durable cursor and send failures to a dead-letter queue.
 - Each service publishes an **OpenAPI 3.1** contract (served at `/api-docs`)
   and changes it before or together with the implementation. Breaking API or
   event changes need a new version, not an in-place edit.
