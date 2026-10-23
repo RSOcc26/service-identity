@@ -102,7 +102,7 @@ components:
           enum: [ok, degraded, fail]
         checks:
           type: object
-          description: Result per dependency, for example `database` or `rabbitmq`.
+          description: Result per dependency, for example `database` or `kafka`.
           additionalProperties:
             type: object
             required: [status]

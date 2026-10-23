@@ -51,9 +51,10 @@ deployable unit:
   membership and forwards a signed tenant context; services take the tenant
   only from that verified context.
 - **Synchronous REST for questions** ("is this allowed?"), **events for facts**
-  ("work order released") over RabbitMQ. Events are written to an `outbox`
-  table in the same transaction as the change; consumers are idempotent, keep
-  a durable cursor and send failures to a dead-letter queue.
+  ("work order released") over Apache Kafka. Events are written to an
+  `outbox` table in the same transaction as the change and published to the
+  service's own topic; consumers are idempotent, commit offsets only after
+  processing and send failures to their dead-letter topic.
 - Each service publishes an **OpenAPI 3.1** contract (served at `/api-docs`)
   and changes it before or together with the implementation. Breaking API or
   event changes need a new version, not an in-place edit.
@@ -61,9 +62,9 @@ deployable unit:
   (Prometheus) and logs structured JSON that includes the request ID.
 - Configuration comes only from environment variables (12-factor);
   `.env.example` documents them with placeholder values.
-- Stack: Node.js 24 (see `.nvmrc`), React, PostgreSQL, RabbitMQ, Docker, Docker
-  Compose locally, Kubernetes with Helm, GitHub Actions, images in GitHub
-  Container Registry. No Kafka, gRPC, GraphQL or event sourcing for now.
+- Stack: Node.js 24 (see `.nvmrc`), React, PostgreSQL, Apache Kafka, Docker,
+  Docker Compose locally, Kubernetes with Helm, GitHub Actions, images in
+  GitHub Container Registry. No gRPC, GraphQL or event sourcing for now.
 - Identity: custom identity vs. an external OIDC provider is an **open
   decision** (ADR-0002). Do not implement either authentication approach
   until it is decided.
