@@ -59,8 +59,8 @@ Planned resources (through the gateway as `/api/identity/v1/...`):
 
 ## Events
 
-Published through the transactional outbox to the `companycentral.events`
-exchange; consumers are idempotent
+Published through the transactional outbox to the `identity.events` Kafka
+topic, keyed by aggregate ID. Consumers are idempotent
 ([architecture](https://github.com/RSOcc26/.github/blob/main/docs/architecture.md#5-asynchronous-communication-events)). Planned:
 
 | Direction | Event | Description |
@@ -82,8 +82,10 @@ they come from Secrets, everything else from ConfigMaps.
 | `LOG_LEVEL` | no | `debug`, `info`, `warn` or `error` (default `info`) |
 | `DATABASE_URL` | yes | PostgreSQL URL of this service's database, runtime role |
 | `DATABASE_MIGRATION_URL` | yes | Same database, migration role (used only by migrations) |
-| `RABBITMQ_URL` | yes | RabbitMQ connection URL |
-| `RABBITMQ_EXCHANGE` | no | Event exchange (default `companycentral.events`) |
+| `KAFKA_BROKERS` | yes | Comma-separated Kafka bootstrap servers |
+| `KAFKA_CLIENT_ID` | no | Kafka client ID (default `service-identity`) |
+| `KAFKA_TOPIC` | yes | Topic this service publishes to (`identity.events`) |
+| `KAFKA_SASL_MECHANISM`, `KAFKA_USERNAME`, `KAFKA_PASSWORD` | in Kubernetes | SCRAM credentials of this service's Kafka user; empty for the local broker |
 | `TENANT_CONTEXT_JWKS_URL` | yes | Where to get the gateway's public keys for verifying the tenant context |
 | `TENANT_CONTEXT_ISSUER` | yes | Expected issuer of the tenant context |
 | `TENANT_CONTEXT_AUDIENCE` | yes | Expected audience (`service-identity`) |
@@ -91,7 +93,7 @@ they come from Secrets, everything else from ConfigMaps.
 ## Getting started
 
 Prerequisites: Node.js 24 (see `.nvmrc`), Docker, and the local stack from the
-[deploy](https://github.com/RSOcc26/deploy) repository (PostgreSQL, RabbitMQ).
+[deploy](https://github.com/RSOcc26/deploy) repository (PostgreSQL, Kafka).
 
 _Commands will be added with the first implementation._
 
