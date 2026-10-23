@@ -89,7 +89,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Signed, short-lived tenant context issued by the gateway (ADR-0008).
+        Signed, short-lived tenant context issued by the gateway (ADR-0001).
         Carries the user ID, tenant ID, roles and correlation ID. Never
         accepted from browsers directly.
   schemas:

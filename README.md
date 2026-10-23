@@ -19,21 +19,20 @@ See the [architecture](https://github.com/RSOcc26/.github/blob/main/docs/archite
 
 How users authenticate (custom credentials and tokens, or an external
 OIDC provider such as Keycloak) is an **open decision**, see
-[ADR-0007](https://github.com/RSOcc26/.github/blob/main/docs/adr/0007-identity-provider-open-decision.md). Until it is
+[ADR-0002](https://github.com/RSOcc26/.github/blob/main/docs/adr/0002-identity-provider.md). Until it is
 decided, no authentication mechanism is implemented here, and user IDs are
 kept independent of how users log in.
 
 ## Data ownership
 
 This service owns its own PostgreSQL database; no other service reads or
-writes it directly ([ADR-0003](https://github.com/RSOcc26/.github/blob/main/docs/adr/0003-database-per-service.md)).
+writes it directly ([ADR-0001](https://github.com/RSOcc26/.github/blob/main/docs/adr/0001-multi-tenancy.md)).
 
 Owns: users, companies, memberships, invitations.
 
 Multi-tenancy: tenants share tables. Every tenant-owned row has a `tenant_id`,
 and PostgreSQL row-level security restricts each transaction to the tenant
-from the verified tenant context ([ADR-0004](https://github.com/RSOcc26/.github/blob/main/docs/adr/0004-multi-tenancy-shared-tables-rls.md),
-[ADR-0008](https://github.com/RSOcc26/.github/blob/main/docs/adr/0008-tenant-context-validation.md)). Companies are the tenants. Memberships and invitations are tenant-scoped; user accounts are global (one person can belong to several companies).
+from the verified tenant context ([ADR-0001](https://github.com/RSOcc26/.github/blob/main/docs/adr/0001-multi-tenancy.md)). Companies are the tenants. Memberships and invitations are tenant-scoped; user accounts are global (one person can belong to several companies).
 
 ## API
 
@@ -62,7 +61,7 @@ Planned resources (through the gateway as `/api/identity/v1/...`):
 
 Published through the transactional outbox to the `companycentral.events`
 exchange; consumers are idempotent
-([ADR-0006](https://github.com/RSOcc26/.github/blob/main/docs/adr/0006-rabbitmq-transactional-outbox.md)). Planned:
+([architecture](https://github.com/RSOcc26/.github/blob/main/docs/architecture.md#5-asynchronous-communication-events)). Planned:
 
 | Direction | Event | Description |
 |---|---|---|
