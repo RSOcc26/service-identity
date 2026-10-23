@@ -39,9 +39,6 @@ deployable unit:
 | `deploy` | Docker Compose, Kubernetes, Helm charts, monitoring |
 | `.github` | Organization defaults, reusable CI, architecture docs |
 
-An activity log, a Hub mailbox and shared tasks are out of scope for now;
-they may be added later as new services.
-
 ## Architecture rules
 
 - Browser → Ingress → `web` (`/`) or `gateway` (`/api/*`) → services. Only the
@@ -68,7 +65,7 @@ they may be added later as new services.
   Compose locally, Kubernetes with Helm, GitHub Actions, images in GitHub
   Container Registry. No Kafka, gRPC, GraphQL or event sourcing for now.
 - Identity: custom identity vs. an external OIDC provider is an **open
-  decision** (ADR-0007). Do not implement either authentication approach
+  decision** (ADR-0002). Do not implement either authentication approach
   until it is decided.
 - Significant design decisions get an ADR in `docs/adr/`.
 
@@ -119,7 +116,7 @@ identity-related settings.
 Owns: users, companies, memberships, invitations. No other service reads or writes this data directly; others go
 through this service's API or its events.
 
-How users authenticate (custom or external OIDC) is an open decision (ADR-0007);
+How users authenticate (custom or external OIDC) is an open decision (ADR-0002);
 keep user IDs independent of it.
 
 Layout: `src/api/` (routes, validation, OpenAPI), `src/domain/` (business
