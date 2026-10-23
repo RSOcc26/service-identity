@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+  title: CompanyCentral Identity API
+  version: 0.0.0
+  summary: "Identity service: users, companies (tenants), memberships, invitations and identity-related settings."
+  description: |
+    Contract for `service-identity`. Only the operational endpoints are defined so far;
+    resources are added contract-first together with their implementation.
+    Status: contract only, nothing is implemented yet.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:3001
+    description: Local development
+tags:
+  - name: operations
+    description: Health, metrics and documentation endpoints used by the platform.
+paths:
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Liveness probe
+      description: Returns 200 while the process runs. Never checks dependencies.
+      tags: [operations]
+      security: []
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      description: |
+        Returns 200 when the service can handle requests: database reachable,
+        migrations applied, message broker connected. Returns 503 otherwise.
+      tags: [operations]
+      security: []
+      responses:
+        "200":
+          description: Ready to receive traffic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Not ready; at least one check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics
+      tags: [operations]
+      security: []
+      responses:
+        "200":
+          description: Metrics in the Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api-docs:
+    get:
+      operationId: getApiDocs
+      summary: This OpenAPI document
+      tags: [operations]
+      security: []
+      responses:
+        "200":
+          description: The OpenAPI 3.1 document of this service.
+          content:
+            application/yaml:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+components:
+  securitySchemes:
+    tenantContext:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Signed, short-lived tenant context issued by the gateway (ADR-0008).
+        Carries the user ID, tenant ID, roles and correlation ID. Never
+        accepted from browsers directly.
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, fail]
+        checks:
+          type: object
+          description: Result per dependency, for example `database` or `rabbitmq`.
+          additionalProperties:
+            type: object
+            required: [status]
+            properties:
+              status:
+                type: string
+                enum: [ok, fail]
+              detail:
+                type: string
+    Problem:
+      type: object
+      description: Error response (RFC 9457, `application/problem+json`).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        correlationId:
+          type: string
+security:
+  - tenantContext: []
