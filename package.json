@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
-    "test": "node --test 'test/unit/**/*.test.js'"
+    "test": "node --test 'test/unit/**/*.test.js'",
+    "test:integration": "node --env-file-if-exists=.env --test 'test/integration/**/*.test.js'"
   },
   "dependencies": {
     "@fastify/swagger": "9.9.2",

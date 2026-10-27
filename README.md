@@ -99,7 +99,8 @@ Prerequisites: Node.js 24 (see `.nvmrc`), Docker, and the local stack from the
 cp .env.example .env   # set the database passwords from deploy/compose/.env
 npm ci
 npm start              # applies pending migrations, then listens on http://localhost:3001
-npm test
+npm test                 # unit tests
+npm run test:integration # against the local PostgreSQL (docker compose up -d postgres)
 ```
 
 Migrations are SQL files in `migrations/`, applied on startup with `DATABASE_MIGRATION_URL`
