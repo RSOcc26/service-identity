@@ -7,8 +7,8 @@ the *Cloud Computing Services* course (RSO 2026/27, FRI UL).
 See the [architecture](https://github.com/RSOcc26/.github/blob/main/docs/architecture.md) and the
 [RSOcc26 organization](https://github.com/RSOcc26) for the other services.
 
-> **Status:** scaffold — no implementation yet. API resources and events below
-> are the planned design, not working features.
+> **Status:** early implementation: operational endpoints only (health, metrics, API docs).
+> API resources and events below are the planned design, not working features.
 
 ## Responsibilities
 
@@ -37,7 +37,7 @@ from the verified tenant context ([ADR-0001](https://github.com/RSOcc26/.github/
 ## API
 
 The OpenAPI 3.1 contract is [`src/api/openapi.yaml`](src/api/openapi.yaml) and
-will be served at `/api-docs`. It currently defines only the operational
+is served at `/api-docs` (JSON, or YAML with `Accept: application/yaml`). It currently defines only the operational
 endpoints; resources are added contract-first, together with their
 implementation.
 
@@ -78,7 +78,7 @@ they come from Secrets, everything else from ConfigMaps.
 
 | Variable | Required | Description |
 |---|---|---|
-| `PORT` | no | HTTP port (default `3000`) |
+| `PORT` | no | HTTP port (default `3001`) |
 | `LOG_LEVEL` | no | `debug`, `info`, `warn` or `error` (default `info`) |
 | `DATABASE_URL` | yes | PostgreSQL URL of this service's database, runtime role |
 | `DATABASE_MIGRATION_URL` | yes | Same database, migration role (used only by migrations) |
@@ -95,7 +95,11 @@ they come from Secrets, everything else from ConfigMaps.
 Prerequisites: Node.js 24 (see `.nvmrc`), Docker, and the local stack from the
 [deploy](https://github.com/RSOcc26/deploy) repository (PostgreSQL, Kafka).
 
-_Commands will be added with the first implementation._
+```sh
+npm ci
+npm start   # http://localhost:3001
+npm test
+```
 
 ## Project structure
 

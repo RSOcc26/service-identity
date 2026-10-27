@@ -6,7 +6,7 @@ info:
   description: |
     Contract for `service-identity`. Only the operational endpoints are defined so far;
     resources are added contract-first together with their implementation.
-    Status: contract only, nothing is implemented yet.
+    Status: all operational endpoints are implemented.
   license:
     name: MIT
     identifier: MIT

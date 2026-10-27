@@ -9,3 +9,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Initial repository scaffold.
+- Fastify HTTP server with `/health/live` and `/health/ready`.
+- `/api-docs` serving the OpenAPI document (JSON or YAML).
+- `/metrics` with default Node.js process metrics in Prometheus format.
