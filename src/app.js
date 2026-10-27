@@ -2,12 +2,13 @@ import Fastify from 'fastify';
 import swagger from '@fastify/swagger';
 import { fileURLToPath } from 'node:url';
 import { register, collectDefaultMetrics } from 'prom-client';
+import { v1 } from './api/v1.js';
 
 // Process metrics
 collectDefaultMetrics();
 
 // Builds the Fastify app
-export const buildApp = ({ db, ...opts } = {}) => {
+export const buildApp = ({ db, verifyToken, ...opts } = {}) => {
   const app = Fastify(opts);
 
   // Serves the contract-first OpenAPI document from src/api/
@@ -31,5 +32,6 @@ export const buildApp = ({ db, ...opts } = {}) => {
     }
   });
   app.get('/metrics', async (req, reply) => reply.type(register.contentType).send(await register.metrics()));
+  app.register(v1, { prefix: '/v1', db, verifyToken });
   return app;
 };

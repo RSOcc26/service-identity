@@ -16,6 +16,8 @@ servers:
 tags:
   - name: operations
     description: Health, metrics and documentation endpoints used by the platform.
+  - name: users
+    description: The signed-in user.
 paths:
   /health/live:
     get:
@@ -82,8 +84,37 @@ paths:
             application/json:
               schema:
                 type: object
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: Current user
+      description: |
+        Returns the signed-in user. On the first call the user is created from
+        the OIDC token claims and linked to the token subject (`sub`).
+      tags: [users]
+      security:
+        - oidc: []
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Missing or invalid access token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 components:
   securitySchemes:
+    oidc:
+      type: openIdConnect
+      openIdConnectUrl: http://localhost:8180/realms/companycentral/.well-known/openid-configuration
+      description: |
+        Keycloak access token (ADR-0002). Verified by this service until the
+        gateway verifies it and forwards the tenant context instead.
     tenantContext:
       type: http
       scheme: bearer
@@ -93,6 +124,21 @@ components:
         Carries the user ID, tenant ID, roles and correlation ID. Never
         accepted from browsers directly.
   schemas:
+    User:
+      type: object
+      required: [id, email, displayName, locale]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        locale:
+          type: string
+          enum: [sl, en]
     Health:
       type: object
       required: [status]

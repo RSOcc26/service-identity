@@ -51,6 +51,7 @@ Planned resources (through the gateway as `/api/identity/v1/...`):
 
 | Resource | Path | Purpose |
 |---|---|---|
+| Me | `/v1/me` | The signed-in user, created on first call (**implemented**) |
 | Users | `/v1/users` | Read and update the current user and users of a company |
 | Companies | `/v1/companies` | Create a company; read and update its details |
 | Memberships | `/v1/companies/{companyId}/memberships` | List, add, deactivate members |
@@ -86,6 +87,8 @@ they come from Secrets, everything else from ConfigMaps.
 | `KAFKA_CLIENT_ID` | no | Kafka client ID (default `service-identity`) |
 | `KAFKA_TOPIC` | yes | Topic this service publishes to (`identity.events`) |
 | `KAFKA_SASL_MECHANISM`, `KAFKA_USERNAME`, `KAFKA_PASSWORD` | in Kubernetes | SCRAM credentials of this service's Kafka user; empty for the local broker |
+| `OIDC_ISSUER` | yes | Expected token issuer (Keycloak realm URL) |
+| `OIDC_JWKS_URL` | yes | Keycloak's public keys for verifying access tokens |
 | `TENANT_CONTEXT_JWKS_URL` | yes | Where to get the gateway's public keys for verifying the tenant context |
 | `TENANT_CONTEXT_ISSUER` | yes | Expected issuer of the tenant context |
 | `TENANT_CONTEXT_AUDIENCE` | yes | Expected audience (`service-identity`) |

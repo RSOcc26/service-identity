@@ -23,7 +23,7 @@ after(() => db.end());
 beforeEach(async () => {
   await q('BEGIN');
   [{ a, b, u }] = await q('SELECT uuidv7() a, uuidv7() b, uuidv7() u');
-  await q("INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Test')", [u, `${u}@test.local`]);
+  await q("INSERT INTO users (id, email, display_name, external_subject) VALUES ($1, $2, 'Test', $3)", [u, `${u}@test.local`, u]);
   for (const id of [a, b]) {
     await ctx(id);
     await q("INSERT INTO companies (id, name) VALUES ($1, 'Test')", [id]);
