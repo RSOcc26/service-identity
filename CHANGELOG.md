@@ -9,3 +9,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Initial repository scaffold.
+- Fastify HTTP server with `/health/live` and `/health/ready`.
+- PostgreSQL connection pool (`pg`); `/health/ready` returns 503 when the database is unreachable.
+- `/api-docs` serving the OpenAPI document (JSON or YAML).
+- `/metrics` with default Node.js process metrics in Prometheus format.
+- Initial database schema (users, companies, memberships) with row-level security;
+  migrations (`node-pg-migrate`) run on startup as the migration role.
+- `GET /v1/me`: verifies the Keycloak access token (`jose`, JWKS) and returns the
+  user, creating it on first call; `users.external_subject` links it to the token `sub`.

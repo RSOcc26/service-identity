@@ -7,8 +7,8 @@ the *Cloud Computing Services* course (RSO 2026/27, FRI UL).
 See the [architecture](https://github.com/RSOcc26/.github/blob/main/docs/architecture.md) and the
 [RSOcc26 organization](https://github.com/RSOcc26) for the other services.
 
-> **Status:** scaffold — no implementation yet. API resources and events below
-> are the planned design, not working features.
+> **Status:** early implementation: operational endpoints only (health, metrics, API docs).
+> API resources and events below are the planned design, not working features.
 
 ## Responsibilities
 
@@ -37,7 +37,7 @@ from the verified tenant context ([ADR-0001](https://github.com/RSOcc26/.github/
 ## API
 
 The OpenAPI 3.1 contract is [`src/api/openapi.yaml`](src/api/openapi.yaml) and
-will be served at `/api-docs`. It currently defines only the operational
+is served at `/api-docs` (JSON, or YAML with `Accept: application/yaml`). It currently defines only the operational
 endpoints; resources are added contract-first, together with their
 implementation.
 
@@ -51,6 +51,7 @@ Planned resources (through the gateway as `/api/identity/v1/...`):
 
 | Resource | Path | Purpose |
 |---|---|---|
+| Me | `/v1/me` | The signed-in user, created on first call (**implemented**) |
 | Users | `/v1/users` | Read and update the current user and users of a company |
 | Companies | `/v1/companies` | Create a company; read and update its details |
 | Memberships | `/v1/companies/{companyId}/memberships` | List, add, deactivate members |
@@ -78,7 +79,7 @@ they come from Secrets, everything else from ConfigMaps.
 
 | Variable | Required | Description |
 |---|---|---|
-| `PORT` | no | HTTP port (default `3000`) |
+| `PORT` | no | HTTP port (default `3001`) |
 | `LOG_LEVEL` | no | `debug`, `info`, `warn` or `error` (default `info`) |
 | `DATABASE_URL` | yes | PostgreSQL URL of this service's database, runtime role |
 | `DATABASE_MIGRATION_URL` | yes | Same database, migration role (used only by migrations) |
@@ -86,6 +87,8 @@ they come from Secrets, everything else from ConfigMaps.
 | `KAFKA_CLIENT_ID` | no | Kafka client ID (default `service-identity`) |
 | `KAFKA_TOPIC` | yes | Topic this service publishes to (`identity.events`) |
 | `KAFKA_SASL_MECHANISM`, `KAFKA_USERNAME`, `KAFKA_PASSWORD` | in Kubernetes | SCRAM credentials of this service's Kafka user; empty for the local broker |
+| `OIDC_ISSUER` | yes | Expected token issuer (Keycloak realm URL) |
+| `OIDC_JWKS_URL` | yes | Keycloak's public keys for verifying access tokens |
 | `TENANT_CONTEXT_JWKS_URL` | yes | Where to get the gateway's public keys for verifying the tenant context |
 | `TENANT_CONTEXT_ISSUER` | yes | Expected issuer of the tenant context |
 | `TENANT_CONTEXT_AUDIENCE` | yes | Expected audience (`service-identity`) |
@@ -95,7 +98,17 @@ they come from Secrets, everything else from ConfigMaps.
 Prerequisites: Node.js 24 (see `.nvmrc`), Docker, and the local stack from the
 [deploy](https://github.com/RSOcc26/deploy) repository (PostgreSQL, Kafka).
 
-_Commands will be added with the first implementation._
+```sh
+cp .env.example .env   # set the database passwords from deploy/compose/.env
+npm ci
+npm start              # applies pending migrations, then listens on http://localhost:3001
+npm test                 # unit tests
+npm run test:integration # against the local PostgreSQL (docker compose up -d postgres)
+```
+
+Migrations are SQL files in `migrations/`, applied on startup with `DATABASE_MIGRATION_URL`
+(later moved to a Kubernetes Job). Create one with
+`npx node-pg-migrate create <name> --migration-file-language sql -m migrations`.
 
 ## Project structure
 
