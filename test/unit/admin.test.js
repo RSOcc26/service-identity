@@ -12,6 +12,7 @@ const contexts = {
   admin: { sub: ADMIN_ID, idp_sub: 'kc-admin', roles: ['platform-admin'], rid: 'r1' },
   member: { sub: 'u2', idp_sub: 'kc-2', roles: [] },
   gateway: { svc: 'gateway', rid: 'r2' },
+  newAdmin: { idp_sub: 'kc-new', roles: ['platform-admin'], rid: 'r3' },
 };
 const verifyToken = async (token) => {
   if (!contexts[token]) throw new Error('invalid');
@@ -41,6 +42,7 @@ test('admin routes require the platform-admin role', async () => {
   for (const [method, url] of [['GET', '/v1/admin/users'], ['GET', `/v1/admin/users/${ID}`], ['DELETE', `/v1/admin/users/${ID}`]]) {
     assert.equal((await call(method, url, 'member')).statusCode, 403);
     assert.equal((await call(method, url, 'gateway')).statusCode, 403);
+    assert.equal((await call(method, url, 'newAdmin')).statusCode, 403);
   }
 });
 

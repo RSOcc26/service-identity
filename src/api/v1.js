@@ -53,7 +53,8 @@ export const v1 = async (app, { verifyToken, users }) => {
   // Platform administration (ADR-0003): only for the platform-admin role
   app.register(async (admin) => {
     admin.addHook('preHandler', async (req, reply) => {
-      if (!req.claims.roles?.includes(PLATFORM_ADMIN)) return problem(reply, 403, 'Forbidden');
+      // sub is needed to know who acts (audit, no self-delete)
+      if (!req.claims.sub || !req.claims.roles?.includes(PLATFORM_ADMIN)) return problem(reply, 403, 'Forbidden');
     });
 
     admin.get('/users', {

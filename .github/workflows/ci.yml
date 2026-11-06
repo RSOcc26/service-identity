@@ -20,4 +20,3 @@ jobs:
     with:
       # Shared tenant-context schema
       contract-repositories: .github
-    secrets: inherit

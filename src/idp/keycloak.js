@@ -55,9 +55,14 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
     return res;
   };
 
+  // Only Keycloak's own "User not found" means the account is gone; any other
+  // 404 (wrong realm or URL, a proxy) is a misconfiguration and must never anonymize
+  const userMissing = async (res) => res.status === 404
+    && (await res.clone().json().catch(() => ({}))).error === 'User not found';
+
   const expectOk = async (res, what) => {
     if (res.ok) return res;
-    if (res.status === 404) throw new IdpNotFoundError(`${what}: account not found`);
+    if (await userMissing(res)) throw new IdpNotFoundError(`${what}: account not found`);
     if (res.status === 409) throw new IdpConflictError(`${what}: conflict`);
     throw new IdpUnavailableError(`${what}: unexpected status ${res.status}`);
   };
@@ -66,7 +71,7 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
     // The account, or null when the provider explicitly reports it missing
     async getAccount(sub) {
       const res = await call('GET', `/users/${encodeURIComponent(sub)}`);
-      if (res.status === 404) return null;
+      if (await userMissing(res)) return null;
       return toAccount(await (await expectOk(res, 'get account')).json());
     },
 
@@ -80,13 +85,20 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
     async updateAccount(sub, { email, givenName, familyName }) {
       const path = `/users/${encodeURIComponent(sub)}`;
       const current = await (await expectOk(await call('GET', path), 'update account')).json();
-      await expectOk(await call('PUT', path, { ...current, email, firstName: givenName, lastName: familyName }), 'update account');
+      // A new email is not verified, whoever set it
+      const reverify = email !== current.email && {
+        emailVerified: false,
+        requiredActions: [...new Set([...(current.requiredActions ?? []), 'VERIFY_EMAIL'])],
+      };
+      await expectOk(await call('PUT', path, {
+        ...current, email, firstName: givenName, lastName: familyName, ...reverify,
+      }), 'update account');
     },
 
     // Deletes the account and its sessions; an account that is already gone counts as deleted
     async deleteAccount(sub) {
       const res = await call('DELETE', `/users/${encodeURIComponent(sub)}`);
-      if (res.status === 404) return;
+      if (await userMissing(res)) return;
       await expectOk(res, 'delete account');
     },
   };

@@ -20,11 +20,15 @@ before(async () => {
 });
 after(() => server.close());
 
-const context = ({ typ = 'tenant-context+jwt', aud = 'service-identity', iss = 'companycentral-gateway', exp = '60s' } = {}) =>
-  new SignJWT({ idp_sub: 'kc-1', email: 'ana@test.local' })
+const context = ({ typ = 'tenant-context+jwt', aud = 'service-identity', iss = 'companycentral-gateway', exp = '60s', iat, jti = crypto.randomUUID() } = {}) => {
+  const jwt = new SignJWT({ idp_sub: 'kc-1', email: 'ana@test.local' })
     .setProtectedHeader({ alg: 'ES256', kid: 'gw-1', typ })
-    .setIssuer(iss).setAudience(aud).setIssuedAt().setExpirationTime(exp)
-    .sign(privateKey);
+    .setIssuer(iss).setAudience(aud);
+  if (iat !== null) jwt.setIssuedAt(iat);
+  if (exp !== null) jwt.setExpirationTime(exp);
+  if (jti !== null) jwt.setJti(jti);
+  return jwt.sign(privateKey);
+};
 
 test('accepts a tenant context signed by the gateway', async () => {
   const claims = await verify(await context());
@@ -35,5 +39,13 @@ test('rejects another JWT type, audience, issuer or an expired context', async (
   await assert.rejects(verify(await context({ typ: 'JWT' })));
   await assert.rejects(verify(await context({ aud: 'service-inventory' })));
   await assert.rejects(verify(await context({ iss: 'http://localhost:8180/realms/companycentral' })));
-  await assert.rejects(verify(await context({ exp: '-1s' })));
+  await assert.rejects(verify(await context({ exp: '-10s' })));
+});
+
+test('rejects a context without exp, iat or jti, an old one, or one for several services', async () => {
+  await assert.rejects(verify(await context({ exp: null })));
+  await assert.rejects(verify(await context({ iat: null })));
+  await assert.rejects(verify(await context({ jti: null })));
+  await assert.rejects(verify(await context({ iat: Math.floor(Date.now() / 1000) - 120, exp: '1h' })));
+  await assert.rejects(verify(await context({ aud: ['service-identity', 'service-inventory'] })));
 });

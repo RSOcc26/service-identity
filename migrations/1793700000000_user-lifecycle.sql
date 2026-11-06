@@ -44,6 +44,7 @@ CREATE INDEX idp_tasks_pending_idx ON idp_tasks (next_attempt_at) WHERE done_at 
 GRANT SELECT, INSERT, UPDATE ON outbox, idp_tasks TO identity_app;
 
 -- Down Migration
+-- Irreversible once a user has been deleted: anonymized rows have no email or name
 
 DROP TABLE idp_tasks, outbox;
 ALTER TABLE users

@@ -22,7 +22,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   `GET`/`PATCH`/`DELETE /v1/admin/users/{id}`; delete anonymizes the user,
   deactivates memberships and deletes the Keycloak account through a retried
   task; `GET /v1/me` returns `platformRoles`.
-- Keycloak Admin API adapter (`src/idp/keycloak.js`, `IDP_*` settings).
+- Keycloak Admin API adapter (`src/idp/keycloak.js`, `IDP_*` settings). Only
+  Keycloak's own `User not found` counts as a missing account; any other `404`
+  (wrong realm or URL) is an outage and never anonymizes. An email change
+  resets `emailVerified` and requires verification.
+- The tenant context must carry `exp`, `iat` and `jti`, be at most 60 s old and
+  name exactly one audience; admin routes also require `sub`.
 - Transactional outbox with a Kafka relay (`@confluentinc/kafka-javascript`);
   `identity.user.updated` and `identity.user.deleted` events (`docs/events.md`).
 - Reconciliation with Keycloak (`RECONCILE_*`), and repair of an email left by
