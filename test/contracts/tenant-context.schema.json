@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://companycentral.example/contracts/tenant-context.schema.json",
+  "title": "Tenant context",
+  "description": "The JWT the gateway signs for every call it forwards to a service (ADR-0001, ADR-0003). See tenant-context.md. Canonical copy: RSOcc26/.github docs/contracts; repositories keep a byte-identical copy for their tests.",
+  "definitions": {
+    "header": {
+      "type": "object",
+      "required": ["alg", "typ", "kid"],
+      "properties": {
+        "alg": { "const": "ES256" },
+        "typ": { "const": "tenant-context+jwt" },
+        "kid": { "type": "string", "minLength": 1, "description": "JWK thumbprint of the gateway key; look it up in the gateway JWKS." }
+      }
+    },
+    "registered": {
+      "type": "object",
+      "required": ["iss", "aud", "iat", "exp", "jti"],
+      "properties": {
+        "iss": { "type": "string", "minLength": 1, "description": "TENANT_CONTEXT_ISSUER, companycentral-gateway by default." },
+        "aud": { "type": "string", "pattern": "^service-[a-z]+$", "description": "The one service the token is for, for example service-identity." },
+        "iat": { "type": "integer" },
+        "exp": { "type": "integer", "description": "iat + TENANT_CONTEXT_TTL_SECONDS (60 by default)." },
+        "jti": { "type": "string", "format": "uuid" }
+      }
+    },
+    "userContext": {
+      "description": "A call made on behalf of a signed-in user.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["iss", "aud", "iat", "exp", "jti", "rid", "roles", "idp_iss", "idp_sub", "idp_iat"],
+      "properties": {
+        "iss": true, "aud": true, "iat": true, "exp": true, "jti": true,
+        "rid": { "type": "string", "maxLength": 64, "description": "Correlation ID (X-Request-Id)." },
+        "sub": { "type": "string", "format": "uuid", "description": "CompanyCentral user ID. Absent only before the user's first sign-in (GET /me creates the user)." },
+        "tid": { "type": "string", "format": "uuid", "description": "Planned: the company (tenant) the gateway validated. Services take the tenant only from here." },
+        "roles": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["platform-admin"] },
+          "description": "Platform roles. Company roles will come from Access."
+        },
+        "idp_iss": { "type": "string", "format": "uri", "description": "Issuer of the identity provider's token." },
+        "idp_sub": { "type": "string", "minLength": 1, "description": "Subject of the identity provider's token." },
+        "idp_iat": { "type": "integer", "description": "When the identity provider issued its token; claims older than a stored change must not overwrite it." },
+        "email": { "type": "string", "format": "email" },
+        "email_verified": { "type": "boolean", "description": "Present together with email." },
+        "name": { "type": "string" },
+        "given_name": { "type": "string" },
+        "family_name": { "type": "string" }
+      },
+      "dependencies": { "email": ["email_verified"] }
+    },
+    "serviceContext": {
+      "description": "A call the gateway makes for itself (for example the user lookup). Carries no user.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["iss", "aud", "iat", "exp", "jti", "rid", "svc"],
+      "properties": {
+        "iss": true, "aud": true, "iat": true, "exp": true, "jti": true,
+        "rid": { "type": "string", "maxLength": 64 },
+        "svc": { "const": "gateway" }
+      }
+    },
+    "payload": {
+      "allOf": [
+        { "$ref": "#/definitions/registered" },
+        { "oneOf": [{ "$ref": "#/definitions/userContext" }, { "$ref": "#/definitions/serviceContext" }] }
+      ]
+    }
+  }
+}

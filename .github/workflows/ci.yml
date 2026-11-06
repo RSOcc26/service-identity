@@ -17,3 +17,7 @@ concurrency:
 jobs:
   checks:
     uses: RSOcc26/.github/.github/workflows/reusable-ci.yml@main
+    with:
+      # Shared tenant-context schema
+      contract-repositories: .github
+    secrets: inherit
