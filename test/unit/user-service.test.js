@@ -47,11 +47,22 @@ test('update: changes the provider first, then the local row with an event', asy
     [/FROM users WHERE id = \$1/, () => [ana]],
     [/UPDATE users SET email/, (params) => { order.push('db'); return [{ ...ana, email: params[1] }]; }],
   ]);
-  const idp = { updateAccount: async (sub, next) => { order.push(['idp', sub, next]); } };
+  // The provider holds a newer family name from a console edit
+  const idp = { updateAccount: async (sub, changes) => { order.push(['idp', sub, changes]); return { email: changes.email, givenName: 'Ana', familyName: 'Kos' }; } };
   const updated = await createUserService({ db, idp, logger: silentLogger }).update('u1', { email: 'new@test.local' });
-  assert.deepEqual(order, [['idp', 'kc-1', { email: 'new@test.local', givenName: 'Ana', familyName: 'Novak' }], 'db']);
+  assert.deepEqual(order, [['idp', 'kc-1', { email: 'new@test.local' }], 'db']);
   assert.equal(updated.email, 'new@test.local');
+  assert.equal(db.statements(/UPDATE users SET email/)[0].params[3], 'Kos', 'unchanged fields come from the provider');
   assert.equal(db.statements(/INSERT INTO outbox/)[0].params[2].type, 'identity.user.updated');
+});
+
+test('reconcileUser never overwrites a row changed after it was read', async () => {
+  const seenAt = new Date('2026-11-06T10:00:00Z');
+  const db = fakeDb([[/UPDATE users SET email/, () => []]]);
+  const idp = { getAccount: async () => ({ sub: 'kc-1', email: 'console@test.local', givenName: 'Ana', familyName: 'Novak' }) };
+  const result = await createUserService({ db, idp, logger: silentLogger }).reconcileUser({ ...ana, updatedAt: seenAt });
+  assert.equal(result, 'unchanged');
+  assert.equal(db.statements(/UPDATE users SET email/)[0].params[5], seenAt);
 });
 
 test('update: a taken email is a conflict and nothing changes locally', async () => {
@@ -124,7 +135,7 @@ test('signIn: an email swap at the provider ends as a conflict, not a 500', asyn
 
 test('update: a user deleted while the provider call ran is a conflict and records no event', async () => {
   const db = fakeDb([[/FROM users WHERE id = \$1/, () => [ana]], [/UPDATE users SET email/, () => []]]);
-  const idp = { updateAccount: async () => {} };
+  const idp = { updateAccount: async () => ({ ...ana, givenName: 'X' }) };
   await assert.rejects(createUserService({ db, idp, logger: silentLogger }).update('u1', { givenName: 'X' }), ConflictError);
   assert.equal(db.statements(/^ROLLBACK/).length, 1);
   assert.equal(db.statements(/^COMMIT/).length, 0);

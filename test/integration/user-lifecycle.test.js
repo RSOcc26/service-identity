@@ -110,3 +110,14 @@ test('a token issued before the last change does not overwrite it', async () => 
   const fresh = await upsertUser(db, { sub, email: `fresh-${email}`, name: 'Ana', issuedAt: Math.floor(Date.now() / 1000) + 5 });
   assert.equal(fresh.email, `fresh-${email}`);
 });
+
+test('updateProfile with seenAt skips a row changed after it was read', async () => {
+  const user = await upsertUser(db, { sub, email, name: 'Ana' });
+  const profile = { email: `console-${email}`, givenName: 'Ana', familyName: 'Novak' };
+  // now() is fixed inside the test transaction, so move the later change forward explicitly
+  await q("UPDATE users SET updated_at = updated_at + interval '1 second' WHERE id = $1", [user.id]);
+  assert.equal(await updateProfile(db, user.id, profile, { seenAt: user.updatedAt }), null);
+  const [current] = await q('SELECT updated_at FROM users WHERE id = $1', [user.id]);
+  const updated = await updateProfile(db, user.id, profile, { seenAt: current.updated_at });
+  assert.equal(updated.email, profile.email);
+});

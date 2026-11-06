@@ -90,6 +90,18 @@ test('updateAccount keeps other fields and maps a taken email to a conflict', as
   await assert.rejects(fakeKeycloak({}).idp.updateAccount('kc-x', {}), IdpNotFoundError);
 });
 
+test('updateAccount changes only the given fields and returns the stored account', async () => {
+  let sent;
+  const { idp } = fakeKeycloak({
+    'GET /users/kc-1': () => Response.json({ ...kcUser, lastName: 'Kos' }),
+    'PUT /users/kc-1': (init) => { sent = JSON.parse(init.body); return new Response(null, { status: 204 }); },
+  });
+  const account = await idp.updateAccount('kc-1', { givenName: 'Anja' });
+  assert.equal(sent.lastName, 'Kos');
+  assert.equal(sent.email, kcUser.email);
+  assert.deepEqual(account, { sub: 'kc-1', email: kcUser.email, givenName: 'Anja', familyName: 'Kos', enabled: true });
+});
+
 test('deleteAccount treats an already missing account as deleted', async () => {
   const { idp, calls } = fakeKeycloak({ 'DELETE /users/kc-1': () => new Response(null, { status: 204 }) });
   await idp.deleteAccount('kc-1');

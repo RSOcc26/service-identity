@@ -81,18 +81,24 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
       return (await res.json()).map(toAccount);
     },
 
-    // Updates the login email and names; throws IdpConflictError for a taken email
+    // Changes only the given fields and returns the account as stored;
+    // throws IdpConflictError for a taken email
     async updateAccount(sub, { email, givenName, familyName }) {
       const path = `/users/${encodeURIComponent(sub)}`;
       const current = await (await expectOk(await call('GET', path), 'update account')).json();
-      // A new email is not verified, whoever set it
-      const reverify = email !== current.email && {
-        emailVerified: false,
-        requiredActions: [...new Set([...(current.requiredActions ?? []), 'VERIFY_EMAIL'])],
+      const next = {
+        ...current,
+        email: email ?? current.email,
+        firstName: givenName ?? current.firstName,
+        lastName: familyName ?? current.lastName,
       };
-      await expectOk(await call('PUT', path, {
-        ...current, email, firstName: givenName, lastName: familyName, ...reverify,
-      }), 'update account');
+      // A new email is not verified, whoever set it
+      if (next.email !== current.email) {
+        next.emailVerified = false;
+        next.requiredActions = [...new Set([...(current.requiredActions ?? []), 'VERIFY_EMAIL'])];
+      }
+      await expectOk(await call('PUT', path, next), 'update account');
+      return toAccount(next);
     },
 
     // Deletes the account and its sessions; an account that is already gone counts as deleted

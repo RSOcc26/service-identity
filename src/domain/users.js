@@ -41,8 +41,8 @@ export const createUserService = ({ db, idp, logger }) => {
     }
     if (account.email && (account.email !== user.email
       || account.givenName !== user.givenName || account.familyName !== user.familyName)) {
-      await updateProfile(db, user.id, account);
-      return 'updated';
+      // Only if nobody changed the row since it was read, so an admin edit is never overwritten
+      return await updateProfile(db, user.id, account, { seenAt: user.updatedAt }) ? 'updated' : 'unchanged';
     }
     return 'unchanged';
   };
@@ -86,13 +86,11 @@ export const createUserService = ({ db, idp, logger }) => {
     async update(id, changes, { correlationId } = {}) {
       const user = await this.get(id);
       if (user.status !== 'active') throw new ConflictError('A deleted user cannot be changed');
-      const next = {
-        email: changes.email ?? user.email,
-        givenName: changes.givenName ?? user.givenName,
-        familyName: changes.familyName ?? user.familyName,
-      };
+      // Unchanged fields come from the provider, which may hold newer console edits
+      let next;
       try {
-        await idp.updateAccount(user.externalSubject, next);
+        const { email, givenName, familyName } = await idp.updateAccount(user.externalSubject, changes);
+        next = { email, givenName, familyName };
       } catch (err) {
         if (err instanceof IdpConflictError) throw new ConflictError('This email belongs to another account');
         if (err instanceof IdpNotFoundError) {

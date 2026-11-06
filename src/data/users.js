@@ -72,12 +72,15 @@ export const listUsers = async (db, { search, status, limit, offset }) => {
 };
 
 // Applies profile values coming from the identity provider
-export const updateProfile = async (db, id, { email, givenName, familyName }) => {
+// seenAt: update only if the row was not changed after that time (millisecond precision, as in JS)
+export const updateProfile = async (db, id, { email, givenName, familyName }, { seenAt = null } = {}) => {
   try {
     const { rows } = await db.query(
       `UPDATE users SET email = $2, given_name = $3, family_name = $4, display_name = $5, updated_at = now()
-       WHERE id = $1 AND status = 'active' RETURNING ${COLUMNS}`,
-      [id, email, givenName ?? null, familyName ?? null, displayName({ givenName, familyName, email })],
+       WHERE id = $1 AND status = 'active'
+         AND ($6::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) <= $6::timestamptz)
+       RETURNING ${COLUMNS}`,
+      [id, email, givenName ?? null, familyName ?? null, displayName({ givenName, familyName, email }), seenAt],
     );
     return rows[0] ?? null;
   } catch (err) {

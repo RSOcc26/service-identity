@@ -51,7 +51,7 @@ test('the update event written by the code matches the contract', async () => {
     [/FROM users WHERE id = \$1/, () => [ana]],
     [/UPDATE users SET email/, () => [ana]],
   ]);
-  await createUserService({ db, idp: { updateAccount: async () => {} }, logger: silentLogger })
+  await createUserService({ db, idp: { updateAccount: async () => ana }, logger: silentLogger })
     .update(ana.id, { givenName: 'Ana' }, { correlationId: 'req-2' });
   const [event] = outboxPayloads(db);
   assertValid(schemaFor(event.type), event);
