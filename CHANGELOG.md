@@ -48,6 +48,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 - `identity.user.updated` is also published when sign-in or reconciliation
   changes a profile; an unchanged sign-in no longer rewrites the user row.
+- Admin edits and reconciliation free an email still held by a stale local
+  user, as sign-in already did, instead of failing with a conflict on every try.
 - Sign-in: claims from a token issued before the user's last change (for
   example an admin edit) no longer overwrite it; an email conflict is repaired
   only for a verified email, and an email swap at Keycloak is a `409`, not a `500`.

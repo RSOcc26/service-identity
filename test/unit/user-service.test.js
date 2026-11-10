@@ -74,6 +74,24 @@ test('reconcileUser publishes identity.user.updated when it copies a changed pro
   assert.deepEqual([event.params[2].type, event.params[2].correlationId], ['identity.user.updated', 'r1']);
 });
 
+test('update: an email still held by a stale local user is freed, then the edit is saved', async () => {
+  let writes = 0;
+  const bor = { ...ana, id: 'u2', email: 'bor@test.local', externalSubject: 'kc-2' };
+  const db = fakeDb([
+    [/FROM users WHERE id = \$1/, () => [ana]],
+    [/lower\(email\) = lower\(\$1\)/, () => [bor]],
+    [/UPDATE users SET status = 'deleted'/, () => [{ ...bor, status: 'deleted' }]],
+    [/UPDATE users SET email/, ([id]) => { writes += 1; if (writes === 1) throw emailTaken; return [{ ...ana, id }]; }],
+  ]);
+  const idp = {
+    updateAccount: async () => ({ email: 'bor@test.local', givenName: 'Ana', familyName: 'Novak' }),
+    getAccount: async () => null, // bor's account is gone at the provider
+  };
+  await createUserService({ db, idp, logger: silentLogger }).update('u1', { email: 'bor@test.local' });
+  assert.equal(writes, 2);
+  assert.equal(db.statements(/UPDATE users SET status = 'deleted'/)[0].params[0], 'u2');
+});
+
 test('update: a taken email is a conflict and nothing changes locally', async () => {
   const db = fakeDb([[/FROM users WHERE id = \$1/, () => [ana]]]);
   const idp = { updateAccount: async () => { throw new IdpConflictError('taken'); } };

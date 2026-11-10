@@ -44,7 +44,20 @@ export const createUserService = ({ db, idp, logger }) => {
   // Brings one local user in line with the provider: copies the profile, or
   // anonymizes the user when the provider reports the account missing.
   // `account` may be passed when already fetched (null = confirmed missing).
-  const reconcileUser = async (user, { correlationId, account } = {}) => {
+  // The provider rejects duplicate emails, so a local user still holding `email` is stale:
+  // reconcile that holder (without nested repair, so swapped emails cannot loop), then retry fn once
+  const withEmailRepair = async (email, sub, correlationId, fn) => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!(err instanceof EmailTakenError)) throw err;
+    }
+    const holder = await findActiveByEmail(db, email);
+    if (holder && holder.externalSubject !== sub) await reconcileUser(holder, { correlationId, repair: false });
+    return fn();
+  };
+
+  const reconcileUser = async (user, { correlationId, account, repair = true } = {}) => {
     if (account === undefined) account = await idp.getAccount(user.externalSubject);
     if (!account) {
       logger.warn({ userId: user.id }, 'account missing at the identity provider; anonymizing user');
@@ -53,11 +66,12 @@ export const createUserService = ({ db, idp, logger }) => {
     }
     if (!profileDiffers(user, account)) return 'unchanged';
     // Only if nobody changed the row since it was read, so an admin edit is never overwritten
-    return withTransaction(db, async (client) => {
+    const write = () => withTransaction(db, async (client) => {
       if (!await updateProfile(client, user.id, account, { seenAt: user.updatedAt })) return 'unchanged';
       await profileUpdated(client, user.id, correlationId);
       return 'updated';
     });
+    return repair ? withEmailRepair(account.email, user.externalSubject, correlationId, write) : write();
   };
 
   return {
@@ -73,19 +87,8 @@ export const createUserService = ({ db, idp, logger }) => {
         if (updated) await profileUpdated(client, user.id, correlationId);
         return user;
       });
-      try {
-        return await upsert();
-      } catch (err) {
-        if (!(err instanceof EmailTakenError)) throw err;
-      }
-      if (!claims.emailVerified) throw emailTaken();
-      try {
-        const holder = await findActiveByEmail(db, claims.email);
-        if (holder && holder.externalSubject !== claims.sub) await reconcileUser(holder, { correlationId });
-        return await upsert();
-      } catch (err) {
-        return mapEmailTaken(err);
-      }
+      return (claims.emailVerified ? withEmailRepair(claims.email, claims.sub, correlationId, upsert) : upsert())
+        .catch(mapEmailTaken);
     },
 
     list: (query) => listUsers(db, query),
@@ -112,13 +115,13 @@ export const createUserService = ({ db, idp, logger }) => {
         }
         throw err;
       });
-      return withTransaction(db, async (client) => {
+      return withEmailRepair(account.email, user.externalSubject, correlationId, () => withTransaction(db, async (client) => {
         const row = await updateProfile(client, id, account);
         // Deleted while the provider call was running: roll back, no event
         if (!row) throw new ConflictError('The user was deleted meanwhile');
         await profileUpdated(client, id, correlationId);
         return row;
-      }).catch(mapEmailTaken);
+      })).catch(mapEmailTaken);
     },
 
     async remove(id, { actorId, correlationId } = {}) {
