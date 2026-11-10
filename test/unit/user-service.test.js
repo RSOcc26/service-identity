@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createUserService, ConflictError, ForbiddenError, NotFoundError } from '../../src/domain/users.js';
-import { IdpConflictError, IdpNotFoundError } from '../../src/idp/keycloak.js';
+import { IdpConflictError, IdpNoEmailError, IdpNotFoundError } from '../../src/idp/keycloak.js';
 import { fakeDb, silentLogger } from './fake-db.js';
 
 const ana = {
@@ -90,6 +90,13 @@ test('update: an email still held by a stale local user is freed, then the edit 
   await createUserService({ db, idp, logger: silentLogger }).update('u1', { email: 'bor@test.local' });
   assert.equal(writes, 2);
   assert.equal(db.statements(/UPDATE users SET status = 'deleted'/)[0].params[0], 'u2');
+});
+
+test('update: an account without an email at the provider is a conflict and nothing changes locally', async () => {
+  const db = fakeDb([[/FROM users WHERE id = \$1/, () => [ana]]]);
+  const idp = { updateAccount: async () => { throw new IdpNoEmailError('no email'); } };
+  await assert.rejects(createUserService({ db, idp, logger: silentLogger }).update('u1', { givenName: 'Anja' }), ConflictError);
+  assert.equal(db.statements(/UPDATE users/).length, 0);
 });
 
 test('update: a taken email is a conflict and nothing changes locally', async () => {

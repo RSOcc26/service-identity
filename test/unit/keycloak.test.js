@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createKeycloakAdmin, IdpConflictError, IdpNotFoundError, IdpUnavailableError,
+  createKeycloakAdmin, IdpConflictError, IdpNoEmailError, IdpNotFoundError, IdpUnavailableError,
 } from '../../src/idp/keycloak.js';
 
 // Fake Keycloak: token endpoint plus scripted Admin API answers
@@ -100,6 +100,12 @@ test('updateAccount changes only the given fields and returns the stored account
   assert.equal(sent.lastName, 'Kos');
   assert.equal(sent.email, kcUser.email);
   assert.deepEqual(account, { sub: 'kc-1', email: kcUser.email, givenName: 'Anja', familyName: 'Kos', enabled: true });
+});
+
+test('updateAccount refuses, before writing, a change that leaves the account without an email', async () => {
+  const { idp, calls } = fakeKeycloak({ 'GET /users/kc-1': () => Response.json({ ...kcUser, email: undefined }) });
+  await assert.rejects(idp.updateAccount('kc-1', { givenName: 'Anja' }), IdpNoEmailError);
+  assert.equal(calls.filter((c) => c.method === 'PUT').length, 0);
 });
 
 test('deleteAccount treats an already missing account as deleted', async () => {

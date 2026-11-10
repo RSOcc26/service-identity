@@ -252,8 +252,10 @@ paths:
         rejects an email used by another account), then this service, which
         publishes `identity.user.updated`. Send at least one field; unknown
         fields are rejected (400), as are blank names. A deleted user cannot be
-        changed (409). The display name is recomputed from the given and family
-        name (or the email when both are empty). If the account no longer exists
+        changed (409), nor can an account whose email was removed in Keycloak
+        unless the change includes a new email (409). The display name is
+        recomputed from the given and family name (or the email when both are
+        empty). If the account no longer exists
         in Keycloak the user is anonymized and 404 is returned.
         The body must be `application/json` (415 otherwise).
       tags: [admin]

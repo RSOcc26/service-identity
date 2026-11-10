@@ -4,7 +4,7 @@ import {
   deactivateMemberships, EmailTakenError,
 } from '../data/users.js';
 import { enqueueEvent, enqueueIdpTask } from '../data/outbox.js';
-import { IdpConflictError, IdpNotFoundError } from '../idp/keycloak.js';
+import { IdpConflictError, IdpNoEmailError, IdpNotFoundError } from '../idp/keycloak.js';
 
 export class NotFoundError extends Error {}
 export class ConflictError extends Error {}
@@ -109,6 +109,7 @@ export const createUserService = ({ db, idp, logger }) => {
       // Unchanged fields come from the provider, which may hold newer console edits
       const account = await idp.updateAccount(user.externalSubject, changes).catch(async (err) => {
         if (err instanceof IdpConflictError) throw emailTaken();
+        if (err instanceof IdpNoEmailError) throw new ConflictError('The account has no email; include one in the change');
         if (err instanceof IdpNotFoundError) {
           await reconcileUser(user, { correlationId });
           throw new NotFoundError('The account no longer exists');

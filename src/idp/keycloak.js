@@ -5,6 +5,7 @@
 export class IdpUnavailableError extends Error {}
 export class IdpConflictError extends Error {}
 export class IdpNotFoundError extends Error {}
+export class IdpNoEmailError extends Error {}
 
 const toAccount = (u) => ({
   sub: u.id,
@@ -82,7 +83,7 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
     },
 
     // Changes only the given fields and returns the account as stored;
-    // throws IdpConflictError for a taken email
+    // throws IdpConflictError for a taken email, IdpNoEmailError when the result would have no email
     async updateAccount(sub, { email, givenName, familyName }) {
       const path = `/users/${encodeURIComponent(sub)}`;
       const current = await (await expectOk(await call('GET', path), 'update account')).json();
@@ -92,6 +93,8 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
         firstName: givenName ?? current.firstName,
         lastName: familyName ?? current.lastName,
       };
+      // Checked before the write, so nothing is half-changed (e.g. email cleared in the console)
+      if (!next.email) throw new IdpNoEmailError('The account has no email');
       // A new email is not verified, whoever set it
       if (next.email !== current.email) {
         next.emailVerified = false;
