@@ -63,6 +63,15 @@ test('reconcileUser never overwrites a row changed after it was read', async () 
   const result = await createUserService({ db, idp, logger: silentLogger }).reconcileUser({ ...ana, updatedAt: seenAt });
   assert.equal(result, 'unchanged');
   assert.equal(db.statements(/UPDATE users SET email/)[0].params[5], seenAt);
+  assert.equal(db.statements(/INSERT INTO outbox/).length, 0);
+});
+
+test('reconcileUser publishes identity.user.updated when it copies a changed profile', async () => {
+  const db = fakeDb([[/UPDATE users SET email/, () => [ana]]]);
+  const idp = { getAccount: async () => ({ sub: 'kc-1', email: 'console@test.local', givenName: 'Ana', familyName: 'Novak' }) };
+  assert.equal(await createUserService({ db, idp, logger: silentLogger }).reconcileUser(ana, { correlationId: 'r1' }), 'updated');
+  const [event] = db.statements(/INSERT INTO outbox/);
+  assert.deepEqual([event.params[2].type, event.params[2].correlationId], ['identity.user.updated', 'r1']);
 });
 
 test('update: a taken email is a conflict and nothing changes locally', async () => {

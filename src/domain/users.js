@@ -15,6 +15,10 @@ export const PLATFORM_ADMIN = 'platform-admin';
 const emailTaken = () => new ConflictError('This email belongs to another account');
 const mapEmailTaken = (err) => { throw err instanceof EmailTakenError ? emailTaken() : err; };
 
+const profileUpdated = (client, userId, correlationId) => enqueueEvent(client, {
+  type: 'identity.user.updated', key: userId, data: { userId }, correlationId,
+});
+
 // True when the provider holds a different profile than the local user
 export const profileDiffers = (user, account) => Boolean(account.email) && (account.email !== user.email
   || account.givenName !== user.givenName || account.familyName !== user.familyName);
@@ -49,7 +53,11 @@ export const createUserService = ({ db, idp, logger }) => {
     }
     if (!profileDiffers(user, account)) return 'unchanged';
     // Only if nobody changed the row since it was read, so an admin edit is never overwritten
-    return await updateProfile(db, user.id, account, { seenAt: user.updatedAt }) ? 'updated' : 'unchanged';
+    return withTransaction(db, async (client) => {
+      if (!await updateProfile(client, user.id, account, { seenAt: user.updatedAt })) return 'unchanged';
+      await profileUpdated(client, user.id, correlationId);
+      return 'updated';
+    });
   };
 
   return {
@@ -102,7 +110,7 @@ export const createUserService = ({ db, idp, logger }) => {
         const row = await updateProfile(client, id, account);
         // Deleted while the provider call was running: roll back, no event
         if (!row) throw new ConflictError('The user was deleted meanwhile');
-        await enqueueEvent(client, { type: 'identity.user.updated', key: id, data: { userId: id }, correlationId });
+        await profileUpdated(client, id, correlationId);
         return row;
       }).catch(mapEmailTaken);
     },
