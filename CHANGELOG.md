@@ -46,6 +46,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `identity.user.updated` is also published when sign-in or reconciliation
+  changes a profile; an unchanged sign-in no longer rewrites the user row.
 - Sign-in: claims from a token issued before the user's last change (for
   example an admin edit) no longer overwrite it; an email conflict is repaired
   only for a verified email, and an email swap at Keycloak is a `409`, not a `500`.

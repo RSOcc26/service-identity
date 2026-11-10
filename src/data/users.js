@@ -24,7 +24,9 @@ export const upsertUser = async (db, { sub, email, name, givenName, familyName, 
          display_name = EXCLUDED.display_name, given_name = EXCLUDED.given_name,
          family_name = EXCLUDED.family_name, updated_at = now()
        WHERE users.status = 'active' AND ($6::timestamptz IS NULL OR users.updated_at <= $6::timestamptz)
-       RETURNING ${COLUMNS}`,
+         AND (users.email, users.display_name, users.given_name, users.family_name)
+           IS DISTINCT FROM (EXCLUDED.email, EXCLUDED.display_name, EXCLUDED.given_name, EXCLUDED.family_name)
+       RETURNING ${COLUMNS}, xmax <> 0 AS updated`,
       [sub, email, displayName({ name, givenName, familyName, email }), givenName ?? null, familyName ?? null,
         issuedAt ? new Date(issuedAt * 1000).toISOString() : null],
     );

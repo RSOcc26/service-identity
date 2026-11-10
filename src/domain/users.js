@@ -67,8 +67,14 @@ export const createUserService = ({ db, idp, logger }) => {
     // Only a verified email may trigger that repair; an unverified one simply
     // conflicts until reconciliation has cleaned up.
     async signIn(claims, { correlationId } = {}) {
+      // Publishes an event only when the claims actually changed the stored profile
+      const upsert = () => withTransaction(db, async (client) => {
+        const { updated, ...user } = await upsertUser(client, claims);
+        if (updated) await profileUpdated(client, user.id, correlationId);
+        return user;
+      });
       try {
-        return await upsertUser(db, claims);
+        return await upsert();
       } catch (err) {
         if (!(err instanceof EmailTakenError)) throw err;
       }
@@ -76,7 +82,7 @@ export const createUserService = ({ db, idp, logger }) => {
       try {
         const holder = await findActiveByEmail(db, claims.email);
         if (holder && holder.externalSubject !== claims.sub) await reconcileUser(holder, { correlationId });
-        return await upsertUser(db, claims);
+        return await upsert();
       } catch (err) {
         return mapEmailTaken(err);
       }

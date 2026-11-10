@@ -14,5 +14,5 @@ user events), `correlationId`, `producer` (`service-identity`), `data`.
 
 | Type | Version | `data` | Meaning |
 |---|---|---|---|
-| `identity.user.updated` | 1 | `{ userId }` | An admin changed the user's email or names; read the user again if you cache profile data |
+| `identity.user.updated` | 1 | `{ userId }` | The user's email or names changed (admin edit, sign-in or reconciliation); read the user again if you cache profile data |
 | `identity.user.deleted` | 1 | `{ userId, reason }` | The user was anonymized; `reason` is `deleted-by-admin` or `account-removed` (gone at Keycloak). Remove or anonymize any personal data you copied; keep references to the ID |

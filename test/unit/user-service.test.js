@@ -92,6 +92,15 @@ test('update: an account gone at the provider anonymizes the user and returns 40
   assert.equal(db.statements(/INSERT INTO idp_tasks/).length, 0, 'no provider task for an account that is already gone');
 });
 
+test('signIn: publishes identity.user.updated only when the claims changed the profile', async () => {
+  for (const updated of [true, false]) {
+    const db = fakeDb([[/INSERT INTO users/, () => [{ ...ana, updated }]]]);
+    const user = await createUserService({ db, idp: {}, logger: silentLogger }).signIn({ sub: 'kc-1', email: ana.email }, { correlationId: 'r1' });
+    assert.equal('updated' in user, false);
+    assert.equal(db.statements(/INSERT INTO outbox/).length, updated ? 1 : 0);
+  }
+});
+
 test('signIn: an email left behind by an account deleted at the provider is freed, then the new user is created', async () => {
   let insertAttempts = 0;
   const db = fakeDb([

@@ -74,7 +74,7 @@ operations:
     action: send
     channel:
       $ref: '#/channels/identityEvents'
-    summary: An admin changed a user's email or names.
+    summary: A user's email or names changed.
     messages:
       - $ref: '#/channels/identityEvents/messages/userUpdated'
   publishUserDeleted:
@@ -114,7 +114,7 @@ components:
     UserUpdated:
       name: identity.user.updated
       title: User updated
-      summary: An admin changed the user's email or names (ADR-0003).
+      summary: The user's email or names changed by an admin edit, sign-in sync or reconciliation (ADR-0003).
       description: Consumers that cache profile data read the user again (`GET /api/identity/v1/admin/users/{id}`, or their own copy's source).
       payload:
         $ref: '#/components/schemas/UserUpdated'
