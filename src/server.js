@@ -14,7 +14,13 @@ const required = (name) => {
   if (!env[name]) throw new Error(`${name} is required`);
   return env[name];
 };
-const seconds = (name, fallback) => Number(env[name] || fallback) * 1000;
+// Fails at startup, so a typo like "5m" never becomes NaN (a ~1 ms job interval, or no deletion cap)
+const number = (name, fallback, min) => {
+  const value = Number(env[name] || fallback);
+  if (!(value >= min)) throw new Error(`${name} must be a number >= ${min}`);
+  return value;
+};
+const seconds = (name, fallback) => number(name, fallback, 1) * 1000;
 
 const db = createPool();
 const idp = createKeycloakAdmin({
@@ -52,7 +58,7 @@ const jobs = [
   every('outbox-relay', seconds('OUTBOX_RELAY_INTERVAL_SECONDS', 2), () => relayOutbox({ db, publisher }), app.log),
   every('idp-tasks', seconds('IDP_TASK_INTERVAL_SECONDS', 5), () => runIdpTasks({ db, idp, logger: app.log }), app.log),
   every('reconcile', seconds('RECONCILE_INTERVAL_SECONDS', 300), () => reconcile({
-    db, idp, users, logger: app.log, maxDeletions: Number(env.RECONCILE_MAX_DELETIONS || 25),
+    db, idp, users, logger: app.log, maxDeletions: number('RECONCILE_MAX_DELETIONS', 25, 0),
   }), app.log),
 ];
 jobs.forEach((job) => job.runNow());

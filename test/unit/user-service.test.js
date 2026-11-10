@@ -187,3 +187,9 @@ test('update: a user deleted while the provider call ran is a conflict and recor
   assert.equal(db.statements(/^ROLLBACK/).length, 1);
   assert.equal(db.statements(/^COMMIT/).length, 0);
 });
+
+test('list: pages are ordered by a unique tiebreaker, so no user repeats or goes missing', async () => {
+  const db = fakeDb([[/count\(\*\)/i, () => [{ total: 0 }]]]);
+  await createUserService({ db, idp: {}, logger: silentLogger }).list({ limit: 10, offset: 0 });
+  assert.match(db.statements(/ORDER BY/)[0].sql, /ORDER BY .*, id LIMIT/);
+});

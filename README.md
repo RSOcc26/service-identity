@@ -141,6 +141,8 @@ they come from Secrets, everything else from ConfigMaps.
 | `RECONCILE_INTERVAL_SECONDS` | no | How often users are reconciled with Keycloak (default `300`) |
 | `RECONCILE_MAX_DELETIONS` | no | Safety cap: a run that would delete more users deletes none (default `25`) |
 
+The intervals must be at least `1` and the cap at least `0`; any other value stops the service at startup.
+
 ## Getting started
 
 Prerequisites: Node.js 24 (see `.nvmrc`), Docker, and the local stack from the

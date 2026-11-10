@@ -56,6 +56,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   reconciliation stops rewriting them and a case-only change needs no re-verification.
 - An admin can no longer delete their own account by sending their ID in
   uppercase; a `urn:uuid:` user ID returns 400 instead of 500.
+- An invalid job interval or `RECONCILE_MAX_DELETIONS` stops the service at
+  startup instead of running the jobs nonstop or switching off the deletion cap.
+- The user list orders by ID last, so paging no longer repeats or skips users
+  with the same name (for example deleted users).
 - Sign-in: claims from a token issued before the user's last change (for
   example an admin edit) no longer overwrite it; an email conflict is repaired
   only for a verified email, and an email swap at Keycloak is a `409`, not a `500`.

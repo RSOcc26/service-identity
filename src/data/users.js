@@ -71,7 +71,7 @@ export const listUsers = async (db, { search, status, limit, offset }) => {
     db.query(`SELECT count(*) FROM users ${filter}`, params),
     db.query(
       `SELECT ${COLUMNS} FROM users ${filter}
-       ORDER BY display_name NULLS LAST, created_at LIMIT $${n + 1} OFFSET $${n + 2}`,
+       ORDER BY display_name NULLS LAST, created_at, id LIMIT $${n + 1} OFFSET $${n + 2}`,
       [...params, limit, offset],
     ),
   ]);
