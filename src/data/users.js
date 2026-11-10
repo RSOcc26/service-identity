@@ -48,6 +48,9 @@ export const findBySubject = async (db, sub) =>
 export const findActiveByEmail = async (db, email) =>
   (await db.query(`SELECT ${COLUMNS} FROM users WHERE lower(email) = lower($1) AND status = 'active'`, [email])).rows[0] ?? null;
 
+export const listActiveUsers = async (db) =>
+  (await db.query(`SELECT ${COLUMNS} FROM users WHERE status = 'active'`)).rows;
+
 // Page of users for administration; search matches email or name
 export const listUsers = async (db, { search, status, limit, offset }) => {
   const params = [];
@@ -61,14 +64,16 @@ export const listUsers = async (db, { search, status, limit, offset }) => {
     where.push(`(email ILIKE $${params.length} OR display_name ILIKE $${params.length})`);
   }
   const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = Number((await db.query(`SELECT count(*) FROM users ${filter}`, params)).rows[0].count);
-  params.push(limit, offset);
-  const { rows } = await db.query(
-    `SELECT ${COLUMNS} FROM users ${filter}
-     ORDER BY display_name NULLS LAST, created_at LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params,
-  );
-  return { items: rows, total };
+  const n = params.length;
+  const [count, page] = await Promise.all([
+    db.query(`SELECT count(*) FROM users ${filter}`, params),
+    db.query(
+      `SELECT ${COLUMNS} FROM users ${filter}
+       ORDER BY display_name NULLS LAST, created_at LIMIT $${n + 1} OFFSET $${n + 2}`,
+      [...params, limit, offset],
+    ),
+  ]);
+  return { items: page.rows, total: Number(count.rows[0].count) };
 };
 
 // Applies profile values coming from the identity provider

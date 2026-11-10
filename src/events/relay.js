@@ -1,4 +1,5 @@
 import { KafkaJS } from '@confluentinc/kafka-javascript';
+import { withAdvisoryLock } from '../data/tx.js';
 
 // Kafka producer for the outbox relay: idempotent, acks from all replicas
 export const createKafkaPublisher = ({ brokers, clientId, saslMechanism, username, password }) => {
@@ -31,26 +32,15 @@ const LOCK_KEY = 'service-identity.outbox-relay';
 // so events of one user keep their order. No transaction is held while
 // sending: a crash between sending and marking means a resend
 // (at-least-once; consumers are idempotent), never a loss.
-export const relayOutbox = async ({ db, publisher, batchSize = 100 }) => {
-  const lock = await db.connect();
-  try {
-    const { rows: [{ locked }] } = await lock.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [LOCK_KEY]);
-    if (!locked) return 0;
-    try {
-      const { rows } = await lock.query(
-        'SELECT id, topic, key, payload FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT $1',
-        [batchSize],
-      );
-      if (rows.length === 0) return 0;
-      for (const [topic, messages] of Map.groupBy(rows, (r) => r.topic)) {
-        await publisher.send(topic, messages.map((m) => ({ key: m.key, value: JSON.stringify(m.payload) })));
-      }
-      await lock.query('UPDATE outbox SET published_at = now() WHERE id = ANY($1)', [rows.map((r) => r.id)]);
-      return rows.length;
-    } finally {
-      await lock.query('SELECT pg_advisory_unlock(hashtext($1))', [LOCK_KEY]);
-    }
-  } finally {
-    lock.release();
+export const relayOutbox = ({ db, publisher, batchSize = 100 }) => withAdvisoryLock(db, LOCK_KEY, async (lock) => {
+  const { rows } = await lock.query(
+    'SELECT id, topic, key, payload FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT $1',
+    [batchSize],
+  );
+  if (rows.length === 0) return 0;
+  for (const [topic, messages] of Map.groupBy(rows, (r) => r.topic)) {
+    await publisher.send(topic, messages.map((m) => ({ key: m.key, value: JSON.stringify(m.payload) })));
   }
-};
+  await lock.query('UPDATE outbox SET published_at = now() WHERE id = ANY($1)', [rows.map((r) => r.id)]);
+  return rows.length;
+}, 0);

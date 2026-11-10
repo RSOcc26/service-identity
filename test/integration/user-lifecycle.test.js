@@ -6,6 +6,7 @@ import {
   upsertUser, anonymizeUser, deactivateMemberships, updateProfile, findById, EmailTakenError, UserDeletedError,
 } from '../../src/data/users.js';
 import { enqueueEvent, enqueueIdpTask } from '../../src/data/outbox.js';
+import { silentLogger } from '../unit/fake-db.js';
 
 // Runs as the runtime role (RLS applies, no DELETE); every test is rolled back
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -16,7 +17,7 @@ const ctx = (tenant = '', user = '') =>
 let a, b, sub, email;
 
 before(async () => {
-  await migrate({ info() {}, warn() {}, error() {}, debug() {} });
+  await migrate(silentLogger);
   await db.connect();
 });
 after(() => db.end());

@@ -25,8 +25,7 @@ export const runIdpTasks = async ({ db, idp, logger, batchSize = 10 }) => {
       await db.query('UPDATE idp_tasks SET done_at = now(), last_error = NULL WHERE id = $1', [task.id]);
     } catch (err) {
       const giveUp = task.attempts >= MAX_ATTEMPTS;
-      const log = giveUp ? logger.error.bind(logger) : logger.warn.bind(logger);
-      log({ taskId: task.id, action: task.action, attempts: task.attempts, err: err.message },
+      logger[giveUp ? 'error' : 'warn']({ taskId: task.id, action: task.action, attempts: task.attempts, err: err.message },
         giveUp ? 'identity provider task keeps failing; parked, needs an operator' : 'identity provider task failed; will retry');
       await db.query(
         `UPDATE idp_tasks SET last_error = $2,
