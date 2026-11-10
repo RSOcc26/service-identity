@@ -3,7 +3,8 @@ import { NotFoundError, ConflictError, ForbiddenError, PLATFORM_ADMIN } from '..
 import { IdpUnavailableError } from '../idp/keycloak.js';
 import { sendProblem as problem } from './problem.js';
 
-const userId = { type: 'string', format: 'uuid' };
+// The pattern rejects the urn:uuid: form that the uuid format allows but PostgreSQL does not
+const userId = { type: 'string', format: 'uuid', pattern: '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' };
 const name = { type: 'string', minLength: 1, maxLength: 100, pattern: '\\S' };
 
 // Version 1 API routes; every route requires the gateway's tenant context

@@ -89,7 +89,7 @@ export const createKeycloakAdmin = ({ adminUrl, tokenUrl, clientId, clientSecret
       const current = await (await expectOk(await call('GET', path), 'update account')).json();
       const next = {
         ...current,
-        email: email ?? current.email,
+        email: email?.toLowerCase() ?? current.email, // Keycloak stores emails lowercased
         firstName: givenName ?? current.firstName,
         lastName: familyName ?? current.lastName,
       };

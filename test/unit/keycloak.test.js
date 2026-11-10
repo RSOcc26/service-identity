@@ -102,6 +102,17 @@ test('updateAccount changes only the given fields and returns the stored account
   assert.deepEqual(account, { sub: 'kc-1', email: kcUser.email, givenName: 'Anja', familyName: 'Kos', enabled: true });
 });
 
+test('updateAccount lowercases the email like Keycloak, so a case-only change needs no re-verification', async () => {
+  let sent;
+  const { idp } = fakeKeycloak({
+    'GET /users/kc-1': () => Response.json(kcUser),
+    'PUT /users/kc-1': (init) => { sent = JSON.parse(init.body); return new Response(null, { status: 204 }); },
+  });
+  const account = await idp.updateAccount('kc-1', { email: 'Ana@Test.Local' });
+  assert.equal(account.email, 'ana@test.local');
+  assert.equal(sent.emailVerified, undefined);
+});
+
 test('updateAccount refuses, before writing, a change that leaves the account without an email', async () => {
   const { idp, calls } = fakeKeycloak({ 'GET /users/kc-1': () => Response.json({ ...kcUser, email: undefined }) });
   await assert.rejects(idp.updateAccount('kc-1', { givenName: 'Anja' }), IdpNoEmailError);

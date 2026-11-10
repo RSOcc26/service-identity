@@ -126,8 +126,9 @@ export const createUserService = ({ db, idp, logger }) => {
     },
 
     async remove(id, { actorId, correlationId } = {}) {
-      if (id === actorId) throw new ForbiddenError('You cannot delete your own account');
       const user = await this.get(id);
+      // Compared on the stored, canonical ID, so another spelling of your own ID is caught too
+      if (user.id === actorId) throw new ForbiddenError('You cannot delete your own account');
       if (user.status === 'deleted') return;
       await deleteLocally(user, { correlationId, reason: 'deleted-by-admin', deleteAccount: true });
       logger.info({ userId: id, actorId }, 'user deleted');

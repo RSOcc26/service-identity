@@ -95,6 +95,10 @@ test('DELETE /v1/admin/users/:id returns 204; deleting yourself returns 403', as
   assert.equal((await call('DELETE', `/v1/admin/users/${ADMIN_ID}`, 'admin')).statusCode, 403);
 });
 
+test('a urn:uuid: user ID is rejected with 400, not passed to the database', async () => {
+  assert.equal((await call('GET', `/v1/admin/users/urn:uuid:${ID}`, 'admin')).statusCode, 400);
+});
+
 test('the internal subject lookup is only for the gateway', async () => {
   const res = await call('GET', '/v1/internal/users/by-subject/kc-1', 'gateway');
   assert.equal(res.statusCode, 200);

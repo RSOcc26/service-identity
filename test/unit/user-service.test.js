@@ -35,8 +35,12 @@ test('remove: anonymizes, deactivates memberships, records the event and queues 
 });
 
 test('remove: refuses to delete your own account; unknown users are 404; deleted users are a no-op', async () => {
-  const service = createUserService({ db: fakeDb([[/FROM users WHERE id/, ([id]) => (id === 'gone' ? [{ ...ana, status: 'deleted' }] : [])]]), idp: {}, logger: silentLogger });
-  await assert.rejects(service.remove('admin', { actorId: 'admin' }), ForbiddenError);
+  const admin = { ...ana, id: '0a7e0000-0000-4000-8000-000000000001' };
+  const service = createUserService({ db: fakeDb([[/FROM users WHERE id/, ([id]) => {
+    if (id === 'gone') return [{ ...ana, status: 'deleted' }];
+    return id.toLowerCase() === admin.id ? [admin] : [];
+  }]]), idp: {}, logger: silentLogger });
+  await assert.rejects(service.remove(admin.id.toUpperCase(), { actorId: admin.id }), ForbiddenError);
   await assert.rejects(service.remove('nobody', { actorId: 'admin' }), NotFoundError);
   await service.remove('gone', { actorId: 'admin' });
 });

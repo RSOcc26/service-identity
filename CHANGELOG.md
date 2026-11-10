@@ -52,6 +52,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   user, as sign-in already did, instead of failing with a conflict on every try.
 - Editing a user whose email was removed in Keycloak returns 409 (unless the
   change sets an email) instead of 500, and Keycloak is left unchanged.
+- Admin email edits are stored lowercased, as Keycloak stores them, so
+  reconciliation stops rewriting them and a case-only change needs no re-verification.
+- An admin can no longer delete their own account by sending their ID in
+  uppercase; a `urn:uuid:` user ID returns 400 instead of 500.
 - Sign-in: claims from a token issued before the user's last change (for
   example an admin edit) no longer overwrite it; an email conflict is repaired
   only for a verified email, and an email swap at Keycloak is a `409`, not a `500`.
