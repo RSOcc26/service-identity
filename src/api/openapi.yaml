@@ -4,9 +4,38 @@ info:
   version: 0.0.0
   summary: "Identity service: users, companies (tenants), memberships, invitations and identity-related settings."
   description: |
-    Contract for `service-identity`. Only the operational endpoints are defined so far;
-    resources are added contract-first together with their implementation.
-    Status: all operational endpoints are implemented.
+    Contract for `service-identity`.
+
+    **Status.** Implemented: the operational endpoints, the signed-in user (`/v1/me`),
+    platform administration of users (`/v1/admin/users`) and the gateway's user lookup.
+    Operations marked `x-status: planned` (companies, memberships, invitations and the
+    gateway's membership check) are the agreed contract-first design: not served yet
+    (they return 404), and their shape may still change until they are implemented.
+    Events are specified separately in `docs/asyncapi.yaml`; the token every route
+    requires is specified in the shared tenant-context contract
+    (`RSOcc26/.github docs/contracts/tenant-context.md`).
+
+    **Request IDs.** `X-Request-Id` from the gateway is used as the request ID (a missing
+    or unsafe one is replaced), returned on every response, logged, and returned as
+    `correlationId` in every problem document.
+
+    Browsers reach these routes through the gateway as `/api/identity/v1/...`
+    (the gateway's own contract adds its error responses and the access-token
+    security scheme). The `/v1/internal/...` routes are never routed by the gateway.
+
+    Errors are `application/problem+json` (RFC 9457). Fastify's own client errors keep
+    their status (malformed JSON 400, unsupported content type 415, body too large 413)
+    but share the title `Bad Request`; the status code is authoritative. Authentication
+    (401) is checked first, then request validation (400), then the platform-admin role
+    (403): a caller without the role who sends an invalid request gets 400, not 403.
+
+    Deleted users and anonymization (ADR-0003): deleting a user keeps the row and its ID
+    so references in other data stay valid, but erases `email`, `displayName`, `givenName`
+    and `familyName` (they become `null`), sets `status` to `deleted` and `deletedAt`,
+    deactivates all memberships and publishes `identity.user.deleted`. A deleted user is
+    never revived: signing in again is refused with 403, the gateway rejects their tokens
+    with 401, and `PATCH` returns 409. The same anonymization happens when reconciliation
+    finds the Keycloak account gone.
   license:
     name: MIT
     identifier: MIT
@@ -18,6 +47,17 @@ tags:
     description: Health, metrics and documentation endpoints used by the platform.
   - name: users
     description: The signed-in user.
+  - name: admin
+    description: Platform administration of user accounts; requires the `platform-admin` role (ADR-0003).
+  - name: internal
+    description: Service-to-service calls; never routed by the gateway.
+  - name: companies
+    description: "Planned: companies (tenants). Tenant-scoped routes take the company from the context's `tid`."
+  - name: memberships
+    description: "Planned: who belongs to a company. Company roles and permissions live in Access."
+  - name: invitations
+    description: "Planned: inviting people into a company by email (ADR-0002: the Keycloak account is linked on acceptance)."
+
 paths:
   /health/live:
     get:
@@ -90,10 +130,13 @@ paths:
       summary: Current user
       description: |
         Returns the signed-in user. On the first call the user is created from
-        the OIDC token claims and linked to the token subject (`sub`).
+        the identity provider's claims in the tenant context and linked to the
+        provider's subject (`idp_sub`) and refreshed from the claims on later
+        calls (a token older than the last admin edit does not overwrite it).
+        Needs no company. `platformRoles` comes from the tenant context.
       tags: [users]
       security:
-        - oidc: []
+        - tenantContext: []
       responses:
         "200":
           description: The signed-in user.
@@ -101,32 +144,482 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+              example:
+                id: 0192f8e0-0000-7000-8000-000000000001
+                email: ana@example.com
+                displayName: Ana Novak
+                locale: sl
+                platformRoles: [platform-admin]
         "401":
-          description: Missing or invalid access token.
+          description: |
+            Missing, invalid or expired tenant context, or the context carries
+            no identity-provider subject or email.
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-components:
-  securitySchemes:
-    oidc:
-      type: openIdConnect
-      openIdConnectUrl: http://localhost:8180/realms/companycentral/.well-known/openid-configuration
+        "403":
+          description: The account was deleted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: |
+            The email belongs to another CompanyCentral user. With a verified
+            email, a user whose Keycloak account is gone is cleaned up first;
+            otherwise this lasts until reconciliation has run.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Keycloak is unreachable while repairing an email conflict; retry.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/admin/users:
+    get:
+      operationId: listUsers
+      summary: List users (platform admin)
       description: |
-        Keycloak access token (ADR-0002). Verified by this service until the
-        gateway verifies it and forwards the tenant context instead.
+        User accounts, sorted by display name (deleted users, whose name is
+        erased, come last). `status` defaults to `active`; `deleted` and `all`
+        include anonymized users. `search` is a case-insensitive substring match
+        on email or display name. Unknown query parameters are rejected (400).
+        Requires the `platform-admin` role in the tenant context (ADR-0003).
+      tags: [admin]
+      security:
+        - tenantContext: []
+      parameters:
+        - { name: search, in: query, schema: { type: string, maxLength: 100 }, description: Matches email or name }
+        - { name: status, in: query, schema: { type: string, enum: [active, deleted, all], default: active } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: One page of users.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AdminUser" } }
+                  total: { type: integer, description: "Number of users matching the filter, ignoring limit and offset" }
+              example:
+                items:
+                  - id: 0192f8e0-0000-7000-8000-000000000001
+                    status: active
+                    email: ana@example.com
+                    displayName: Ana Novak
+                    givenName: Ana
+                    familyName: Novak
+                    locale: sl
+                    createdAt: "2026-10-01T08:00:00Z"
+                    updatedAt: "2026-10-01T08:00:00Z"
+                    deletedAt: null
+                total: 1
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/users/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getUser
+      summary: Get a user (platform admin)
+      description: Returns active and deleted users alike; a deleted user has no personal data.
+      tags: [admin]
+      security:
+        - tenantContext: []
+      responses:
+        "200":
+          description: The user; a deleted user has no personal data.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateUser
+      summary: Edit a user (platform admin)
+      description: |
+        Changes the sign-in email and names. Keycloak is updated first (it
+        rejects an email used by another account), then this service, which
+        publishes `identity.user.updated`. Send at least one field; unknown
+        fields are rejected (400), as are blank names. A deleted user cannot be
+        changed (409), nor can an account whose email was removed in Keycloak
+        unless the change includes a new email (409). The display name is
+        recomputed from the given and family name (or the email when both are
+        empty). If the account no longer exists
+        in Keycloak the user is anonymized and 404 is returned.
+        The body must be `application/json` (415 otherwise).
+      tags: [admin]
+      security:
+        - tenantContext: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                givenName: { type: string, minLength: 1, maxLength: 100, pattern: "\\S" }
+                familyName: { type: string, minLength: 1, maxLength: 100, pattern: "\\S" }
+            example: { email: ana.novak@example.com, givenName: Ana }
+      responses:
+        "200":
+          description: The updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    delete:
+      operationId: deleteUser
+      summary: Delete a user (platform admin)
+      description: |
+        Anonymizes the user in one transaction: email and names are erased
+        (the ID stays, so references elsewhere remain valid), memberships are
+        deactivated, `identity.user.deleted` is published and the Keycloak
+        account is deleted by a background task with retries. Idempotent;
+        an admin cannot delete their own account (403). Deleting an unknown ID is 404.
+      tags: [admin]
+      security:
+        - tenantContext: []
+      responses:
+        "204": { description: "Deleted, or already deleted." }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/internal/users/by-subject/{sub}:
+    get:
+      operationId: getUserBySubject
+      summary: Resolve an identity-provider subject (gateway only)
+      description: |
+        Used by the gateway on every request to reject deleted users and to
+        put the CompanyCentral user ID in the tenant context. Requires a
+        gateway service context (`svc: gateway`); never routed from outside.
+      tags: [internal]
+      security:
+        - tenantContext: []
+      parameters:
+        - { name: sub, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The user's ID and status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [active, deleted] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/me/companies:
+    get:
+      operationId: listMyCompanies
+      x-status: planned
+      summary: (Planned) Companies of the signed-in user
+      description: The companies the user is an active member of, for the company switcher. Needs no company.
+      tags: [companies]
+      responses:
+        "200":
+          description: The user's companies.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/MyCompany" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/companies:
+    post:
+      operationId: createCompany
+      x-status: planned
+      summary: (Planned) Create a company
+      description: |
+        Creates a company; the creator becomes its first active member.
+        Publishes `identity.company.created` and `identity.membership.added`
+        (`via: company-created`). Needs no company.
+      tags: [companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties: { name: { type: string, minLength: 1, maxLength: 200, pattern: '\S' } }
+      responses:
+        "201":
+          description: The new company.
+          headers: { Location: { schema: { type: string }, description: "/v1/company" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/company:
+    get:
+      operationId: getCompany
+      x-status: planned
+      summary: (Planned) The current company
+      description: The company in the context's `tid`.
+      tags: [companies]
+      responses:
+        "200":
+          description: The company.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      operationId: updateCompany
+      x-status: planned
+      summary: (Planned) Rename the current company
+      description: Requires a company role from Access that allows managing the company (to be defined there).
+      tags: [companies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties: { name: { type: string, minLength: 1, maxLength: 200, pattern: '\S' } }
+      responses:
+        "200":
+          description: The updated company.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Company" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/memberships:
+    get:
+      operationId: listMemberships
+      x-status: planned
+      summary: (Planned) Members of the current company
+      tags: [memberships]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, inactive, all], default: active } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: One page of members.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Membership" } }
+                  total: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/memberships/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeMembership
+      x-status: planned
+      summary: (Planned) Remove a member, or leave the company
+      description: |
+        Deactivates the membership (the row stays, `status: inactive`) and publishes
+        `identity.membership.removed` (`reason: removed-by-admin`, or `left` when the
+        user removes themselves). Removing someone else requires a company role from
+        Access. The last active member cannot leave (409). Idempotent.
+      tags: [memberships]
+      responses:
+        "204": { description: "Removed, or already inactive." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/invitations:
+    get:
+      operationId: listInvitations
+      x-status: planned
+      summary: (Planned) Open invitations of the current company
+      tags: [invitations]
+      responses:
+        "200":
+          description: Pending invitations.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Invitation" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createInvitation
+      x-status: planned
+      summary: (Planned) Invite someone by email
+      description: |
+        Requires a company role from Access. The invitation expires after 7 days. The
+        email is sent through the platform's mail service (needs SMTP, not set up yet).
+        Inviting an existing member is a 409.
+      tags: [invitations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties: { email: { type: string, format: email, maxLength: 254 } }
+      responses:
+        "201":
+          description: The invitation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invitation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/invitations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: revokeInvitation
+      x-status: planned
+      summary: (Planned) Revoke an invitation
+      tags: [invitations]
+      responses:
+        "204": { description: "Revoked, or no longer pending." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/invitations/accept:
+    post:
+      operationId: acceptInvitation
+      x-status: planned
+      summary: (Planned) Accept an invitation
+      description: |
+        The signed-in user accepts with the token from the email. The user's
+        **verified** email must equal the invited email (otherwise 403). Creates the
+        membership and publishes `identity.membership.added` (`via: invitation`).
+        Needs no company.
+      tags: [invitations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties: { token: { type: string, minLength: 20, maxLength: 200 } }
+      responses:
+        "200":
+          description: The company the user joined.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyCompany" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Unknown, expired or revoked invitation.", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/internal/memberships/check:
+    get:
+      operationId: checkMembership
+      x-status: planned
+      summary: (Planned) Is this user an active member of this company? (gateway only)
+      description: |
+        The gateway calls it before forwarding any tenant-scoped request and caches the
+        answer for `MEMBERSHIP_CACHE_TTL_SECONDS`, invalidated by `identity.membership.*`
+        events. Requires a gateway service context (`svc: gateway`). Answers 200 for
+        "not a member" too, so the gateway can cache it; 404 is reserved for an unknown user.
+      tags: [internal]
+      parameters:
+        - { name: userId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: tenantId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active]
+                properties:
+                  active: { type: boolean }
+              example: { active: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  responses:
+    BadRequest:
+      description: |
+        Invalid path, query parameters or body: wrong type or format, unknown or
+        missing fields, malformed JSON.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Unauthorized:
+      description: Missing, invalid or expired tenant context.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Forbidden:
+      description: The caller lacks the required role, or the action is not allowed.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    NotFound:
+      description: No such user (or, for the internal lookup, no such subject).
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    PayloadTooLarge:
+      description: The request body exceeds the size limit.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    UnsupportedMediaType:
+      description: The request body is not `application/json`.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Conflict:
+      description: The email belongs to another account, the user is deleted, or was deleted meanwhile.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Unavailable:
+      description: The identity provider is unreachable; nothing was changed.
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+  securitySchemes:
     tenantContext:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Signed, short-lived tenant context issued by the gateway (ADR-0001).
-        Carries the user ID, tenant ID, roles and correlation ID. Never
-        accepted from browsers directly.
+        Signed, short-lived context issued by the gateway (ADR-0001): an ES256
+        JWT with header `typ: tenant-context+jwt`, issuer
+        `companycentral-gateway` and audience `service-identity`, verified
+        against the gateway's JWKS. Routes that need no company carry the
+        identity provider's issuer and subject (`idp_iss`, `idp_sub`), `email`,
+        `email_verified`, `name`, `given_name`, `family_name`, the
+        CompanyCentral user ID (`sub`, once the user exists), platform `roles`
+        and the correlation ID (`rid`); tenant-scoped routes will add the
+        tenant ID (`tid`). Gateway service calls carry `svc: gateway` instead
+        of a user.
+        Browsers never send it; the gateway replaces their access token with it.
   schemas:
     User:
       type: object
-      required: [id, email, displayName, locale]
+      description: The signed-in user, as returned by `/v1/me`.
+      required: [id, email, displayName, locale, platformRoles]
       properties:
         id:
           type: string
@@ -139,6 +632,39 @@ components:
         locale:
           type: string
           enum: [sl, en]
+        platformRoles:
+          type: array
+          description: Platform roles from the tenant context, for example `platform-admin`.
+          items: { type: string }
+    AdminUser:
+      type: object
+      description: |
+        A user as seen by platform admins. For a deleted user (`status: deleted`)
+        `email`, `displayName`, `givenName` and `familyName` are `null` and
+        `deletedAt` is set; only the ID, locale and timestamps remain.
+      examples:
+        - id: 0192f8e0-0000-7000-8000-000000000002
+          status: deleted
+          email: null
+          displayName: null
+          givenName: null
+          familyName: null
+          locale: en
+          createdAt: "2026-10-01T08:00:00Z"
+          updatedAt: "2026-10-20T12:30:00Z"
+          deletedAt: "2026-10-20T12:30:00Z"
+      required: [id, status, locale, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [active, deleted] }
+        email: { type: [string, "null"], format: email, description: "null once deleted" }
+        displayName: { type: [string, "null"], description: "null once deleted" }
+        givenName: { type: [string, "null"] }
+        familyName: { type: [string, "null"] }
+        locale: { type: string, enum: [sl, en] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deletedAt: { type: [string, "null"], format: date-time, description: "null while active" }
     Health:
       type: object
       required: [status]
@@ -158,10 +684,46 @@ components:
                 enum: [ok, fail]
               detail:
                 type: string
+    Company:
+      type: object
+      description: "Planned."
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string, format: uuid, description: "The tenant ID." }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    MyCompany:
+      type: object
+      description: "Planned: a company as listed for the signed-in user."
+      required: [id, name, joinedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        joinedAt: { type: string, format: date-time }
+    Membership:
+      type: object
+      description: "Planned. Deleted users appear with `null` names and email."
+      required: [userId, status, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        status: { type: string, enum: [active, inactive] }
+        joinedAt: { type: string, format: date-time }
+    Invitation:
+      type: object
+      description: "Planned. The acceptance token is only in the email, never in API responses."
+      required: [id, email, status, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
     Problem:
       type: object
       description: Error response (RFC 9457, `application/problem+json`).
-      required: [type, title, status]
+      required: [type, title, status, correlationId]
       properties:
         type:
           type: string
@@ -176,5 +738,7 @@ components:
           type: string
         correlationId:
           type: string
+          description: The request ID (`X-Request-Id`); quote it when reporting a problem.
+      example: { type: about:blank, title: Not Found, status: 404, detail: User not found, correlationId: 3f2c8c3e-5d5a-4f0e-8c63-6d1f3e9b2a77 }
 security:
   - tenantContext: []

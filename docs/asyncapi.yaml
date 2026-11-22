@@ -1,0 +1,361 @@
+asyncapi: 3.0.0
+info:
+  title: CompanyCentral Identity events
+  version: 1.0.0
+  description: |
+    Events published by `service-identity` (architecture §5). This document is
+    the contract for every consumer: the topic, the message formats and the
+    delivery guarantees are defined here, by the publisher. A consumer
+    documents only which of these messages it reads, in its own contract.
+
+    **Delivery**
+    - Transactional outbox: an event is written in the same database
+      transaction as the change and published afterwards by the relay, so it
+      is never lost and never published for a change that was rolled back.
+    - At-least-once: the same event can arrive more than once. Consumers must
+      be idempotent and ignore an `id` they have already processed (inbox).
+    - Ordering: per user (the message key is the user ID, so one user's events
+      share a partition) and in the order the changes were made. There is no
+      ordering across users.
+    - Retention: 7 days; a consumer that is down longer must resync through the
+      REST API.
+
+    **Content**
+    - Events state facts that already happened; they are not commands.
+    - Events carry IDs only, never personal data. Read the current state
+      through the REST API if needed.
+    - Additive changes (new optional fields, new event types) keep `version`;
+      consumers must ignore fields and types they do not know. A breaking change
+      is a new `version` of that event type, published alongside the old one
+      for a transition period.
+
+    Messages marked `x-status: planned` are agreed in the architecture's event
+    catalog but not published yet; their shape may still change until then.
+  contact:
+    name: CompanyCentral
+    url: https://github.com/RSOcc26/service-identity
+defaultContentType: application/json
+
+servers:
+  local:
+    host: localhost:9094
+    protocol: kafka
+    description: Local Compose broker, no authentication.
+  cluster:
+    host: kafka:9092
+    protocol: kafka
+    description: In Kubernetes; every service authenticates with its own SCRAM user and ACLs allow reading only the topics it consumes.
+
+channels:
+  identityEvents:
+    address: identity.events
+    title: Identity events
+    description: All events of this service. Partitions 3, retention 7 days, dead letters of consumers go to their own `<service>.dlt`.
+    messages:
+      userUpdated:
+        $ref: '#/components/messages/UserUpdated'
+      userDeleted:
+        $ref: '#/components/messages/UserDeleted'
+      companyCreated:
+        $ref: '#/components/messages/CompanyCreated'
+      membershipAdded:
+        $ref: '#/components/messages/MembershipAdded'
+      membershipRemoved:
+        $ref: '#/components/messages/MembershipRemoved'
+    bindings:
+      kafka:
+        topic: identity.events
+        partitions: 3
+        topicConfiguration:
+          retention.ms: 604800000
+
+operations:
+  publishUserUpdated:
+    action: send
+    channel:
+      $ref: '#/channels/identityEvents'
+    summary: A user's email or names changed.
+    messages:
+      - $ref: '#/channels/identityEvents/messages/userUpdated'
+  publishUserDeleted:
+    action: send
+    channel:
+      $ref: '#/channels/identityEvents'
+    summary: A user was anonymized.
+    messages:
+      - $ref: '#/channels/identityEvents/messages/userDeleted'
+  publishCompanyCreated:
+    action: send
+    channel:
+      $ref: '#/channels/identityEvents'
+    summary: A company (tenant) was created. Planned.
+    x-status: planned
+    messages:
+      - $ref: '#/channels/identityEvents/messages/companyCreated'
+  publishMembershipAdded:
+    action: send
+    channel:
+      $ref: '#/channels/identityEvents'
+    summary: A user became an active member of a company. Planned.
+    x-status: planned
+    messages:
+      - $ref: '#/channels/identityEvents/messages/membershipAdded'
+  publishMembershipRemoved:
+    action: send
+    channel:
+      $ref: '#/channels/identityEvents'
+    summary: A membership was deactivated. Planned.
+    x-status: planned
+    messages:
+      - $ref: '#/channels/identityEvents/messages/membershipRemoved'
+
+components:
+  messages:
+    UserUpdated:
+      name: identity.user.updated
+      title: User updated
+      summary: The user's email or names changed by an admin edit, sign-in sync or reconciliation (ADR-0003).
+      description: Consumers that cache profile data read the user again (`GET /api/identity/v1/admin/users/{id}`, or their own copy's source).
+      payload:
+        $ref: '#/components/schemas/UserUpdated'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: The user ID.
+      examples:
+        - name: updatedByAdmin
+          payload:
+            id: 6b0f1c9e-3c1d-4b8a-9a55-1f0c2a7d9e10
+            type: identity.user.updated
+            version: 1
+            occurredAt: '2026-11-03T09:12:30.512Z'
+            tenantId: null
+            correlationId: 3f2c8c3e-5d5a-4f0e-8c63-6d1f3e9b2a77
+            producer: service-identity
+            data:
+              userId: 01a1a080-fb2c-7318-b5a8-fbf95c324543
+    UserDeleted:
+      name: identity.user.deleted
+      title: User deleted (anonymized)
+      summary: The user's personal data was erased; the ID stays valid (ADR-0003).
+      description: |
+        Consumers remove or anonymize any personal data they copied for this
+        user and keep references to the ID, which now stands for a deleted user.
+        The user can no longer sign in. `reason` is `deleted-by-admin` or
+        `account-removed` (the Keycloak account was found missing).
+      payload:
+        $ref: '#/components/schemas/UserDeleted'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: The user ID.
+      examples:
+        - name: deletedByAdmin
+          payload:
+            id: 9a7e2d41-0c6b-4e1f-b2d8-5f4a3c2b1e00
+            type: identity.user.deleted
+            version: 1
+            occurredAt: '2026-11-03T09:20:02.044Z'
+            tenantId: null
+            correlationId: 8d1e5b2a-7c3f-4a9e-b6d0-2e4f1a3c5b7d
+            producer: service-identity
+            data:
+              userId: 01a1a080-fb2c-7318-b5a8-fbf95c324543
+              reason: deleted-by-admin
+    CompanyCreated:
+      name: identity.company.created
+      title: Company created
+      summary: A company (tenant) was created. Planned.
+      x-status: planned
+      description: Access sets up the company's application registry and default roles. `tenantId` equals `data.companyId`.
+      payload:
+        $ref: '#/components/schemas/CompanyCreated'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: The company ID.
+    MembershipAdded:
+      name: identity.membership.added
+      title: Membership added
+      summary: A user became an active member of a company. Planned.
+      x-status: planned
+      description: Access may assign default roles; the gateway clears its membership cache for this user and company.
+      payload:
+        $ref: '#/components/schemas/MembershipAdded'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: The user ID.
+    MembershipRemoved:
+      name: identity.membership.removed
+      title: Membership removed
+      summary: A membership was deactivated. Planned.
+      x-status: planned
+      description: |
+        Published when an admin removes a member, the user leaves, or the user
+        is deleted (one event per company). Access revokes the user's roles in
+        that company; the gateway clears its membership cache.
+      payload:
+        $ref: '#/components/schemas/MembershipRemoved'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: The user ID.
+
+  schemas:
+    Envelope:
+      type: object
+      description: Common envelope of every CompanyCentral event (architecture §5).
+      required: [id, type, version, occurredAt, tenantId, correlationId, producer, data]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique event ID; consumers deduplicate on it.
+        type:
+          type: string
+          description: Event type, `<service>.<aggregate>.<fact>`.
+        version:
+          type: integer
+          minimum: 1
+          description: Version of this event type's `data` shape.
+        occurredAt:
+          type: string
+          format: date-time
+          description: When the change happened (UTC).
+        tenantId:
+          type: [string, 'null']
+          format: uuid
+          description: The company the event belongs to; `null` for events that are not tenant-owned (user events).
+        correlationId:
+          type: [string, 'null']
+          maxLength: 64
+          description: The `X-Request-Id` of the request that caused the change; `reconciliation` for changes found by the reconciliation job.
+        producer:
+          const: service-identity
+        data:
+          type: object
+
+    UserUpdated:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: identity.user.updated
+            version:
+              const: 1
+            tenantId:
+              type: 'null'
+            data:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+
+    UserDeleted:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: identity.user.deleted
+            version:
+              const: 1
+            tenantId:
+              type: 'null'
+            data:
+              type: object
+              additionalProperties: false
+              required: [userId, reason]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                reason:
+                  enum: [deleted-by-admin, account-removed]
+
+    CompanyCreated:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: identity.company.created
+            version:
+              const: 1
+            tenantId:
+              type: string
+              format: uuid
+            data:
+              type: object
+              additionalProperties: false
+              required: [companyId, createdBy]
+              properties:
+                companyId:
+                  type: string
+                  format: uuid
+                createdBy:
+                  type: string
+                  format: uuid
+                  description: The user who created the company and became its first member.
+
+    MembershipAdded:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: identity.membership.added
+            version:
+              const: 1
+            tenantId:
+              type: string
+              format: uuid
+            data:
+              type: object
+              additionalProperties: false
+              required: [userId, via]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                via:
+                  enum: [company-created, invitation]
+                  description: How the membership started.
+
+    MembershipRemoved:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            type:
+              const: identity.membership.removed
+            version:
+              const: 1
+            tenantId:
+              type: string
+              format: uuid
+            data:
+              type: object
+              additionalProperties: false
+              required: [userId, reason]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                reason:
+                  enum: [removed-by-admin, left, user-deleted]
