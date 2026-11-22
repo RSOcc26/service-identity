@@ -13,10 +13,10 @@ export const backoffMs = (attempts) => Math.min(5_000 * 2 ** attempts, MAX_BACKO
 export const runIdpTasks = async ({ db, idp, logger, batchSize = 10 }) => {
   const { rows } = await db.query(
     `UPDATE idp_tasks SET attempts = attempts + 1, next_attempt_at = now() + make_interval(secs => $2)
-     WHERE id IN (
-       SELECT id FROM idp_tasks WHERE done_at IS NULL AND next_attempt_at <= now()
-       ORDER BY next_attempt_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-     RETURNING id, action, external_subject, attempts`,
+      WHERE id IN (
+        SELECT id FROM idp_tasks WHERE done_at IS NULL AND next_attempt_at <= now()
+        ORDER BY next_attempt_at LIMIT $1 FOR UPDATE SKIP LOCKED)
+      RETURNING id, action, external_subject, attempts`,
     [batchSize, LEASE_SECONDS],
   );
   for (const task of rows) {
@@ -29,8 +29,8 @@ export const runIdpTasks = async ({ db, idp, logger, batchSize = 10 }) => {
         giveUp ? 'identity provider task keeps failing; parked, needs an operator' : 'identity provider task failed; will retry');
       await db.query(
         `UPDATE idp_tasks SET last_error = $2,
-           next_attempt_at = CASE WHEN $4 THEN 'infinity'::timestamptz ELSE now() + make_interval(secs => $3) END
-         WHERE id = $1`,
+            next_attempt_at = CASE WHEN $4 THEN 'infinity'::timestamptz ELSE now() + make_interval(secs => $3) END
+          WHERE id = $1`,
         [task.id, err.message.slice(0, 500), backoffMs(task.attempts - 1) / 1000, giveUp],
       );
     }

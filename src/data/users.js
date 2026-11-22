@@ -19,14 +19,14 @@ export const upsertUser = async (db, { sub, email, name, givenName, familyName, 
   try {
     const { rows } = await db.query(
       `INSERT INTO users (external_subject, email, display_name, given_name, family_name)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (external_subject) DO UPDATE SET email = EXCLUDED.email,
-         display_name = EXCLUDED.display_name, given_name = EXCLUDED.given_name,
-         family_name = EXCLUDED.family_name, updated_at = now()
-       WHERE users.status = 'active' AND ($6::timestamptz IS NULL OR users.updated_at <= $6::timestamptz)
-         AND (users.email, users.display_name, users.given_name, users.family_name)
-           IS DISTINCT FROM (EXCLUDED.email, EXCLUDED.display_name, EXCLUDED.given_name, EXCLUDED.family_name)
-       RETURNING ${COLUMNS}, xmax <> 0 AS updated`,
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (external_subject) DO UPDATE SET email = EXCLUDED.email,
+          display_name = EXCLUDED.display_name, given_name = EXCLUDED.given_name,
+          family_name = EXCLUDED.family_name, updated_at = now()
+        WHERE users.status = 'active' AND ($6::timestamptz IS NULL OR users.updated_at <= $6::timestamptz)
+          AND (users.email, users.display_name, users.given_name, users.family_name)
+            IS DISTINCT FROM (EXCLUDED.email, EXCLUDED.display_name, EXCLUDED.given_name, EXCLUDED.family_name)
+        RETURNING ${COLUMNS}, xmax <> 0 AS updated`,
       [sub, email, displayName({ name, givenName, familyName, email }), givenName ?? null, familyName ?? null,
         issuedAt ? new Date(issuedAt * 1000).toISOString() : null],
     );
@@ -71,7 +71,7 @@ export const listUsers = async (db, { search, status, limit, offset }) => {
     db.query(`SELECT count(*) FROM users ${filter}`, params),
     db.query(
       `SELECT ${COLUMNS} FROM users ${filter}
-       ORDER BY display_name NULLS LAST, created_at, id LIMIT $${n + 1} OFFSET $${n + 2}`,
+        ORDER BY display_name NULLS LAST, created_at, id LIMIT $${n + 1} OFFSET $${n + 2}`,
       [...params, limit, offset],
     ),
   ]);
@@ -84,9 +84,9 @@ export const updateProfile = async (db, id, { email, givenName, familyName }, { 
   try {
     const { rows } = await db.query(
       `UPDATE users SET email = $2, given_name = $3, family_name = $4, display_name = $5, updated_at = now()
-       WHERE id = $1 AND status = 'active'
-         AND ($6::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) <= $6::timestamptz)
-       RETURNING ${COLUMNS}`,
+        WHERE id = $1 AND status = 'active'
+          AND ($6::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) <= $6::timestamptz)
+        RETURNING ${COLUMNS}`,
       [id, email, givenName ?? null, familyName ?? null, displayName({ givenName, familyName, email }), seenAt],
     );
     return rows[0] ?? null;
@@ -99,8 +99,8 @@ export const updateProfile = async (db, id, { email, givenName, familyName }, { 
 // Erases personal data and marks the user deleted; returns null if it was not active
 export const anonymizeUser = async (client, id) => (await client.query(
   `UPDATE users SET status = 'deleted', email = NULL, display_name = NULL, given_name = NULL,
-     family_name = NULL, deleted_at = now(), updated_at = now()
-   WHERE id = $1 AND status = 'active' RETURNING ${COLUMNS}`,
+      family_name = NULL, deleted_at = now(), updated_at = now()
+    WHERE id = $1 AND status = 'active' RETURNING ${COLUMNS}`,
   [id],
 )).rows[0] ?? null;
 
