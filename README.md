@@ -179,8 +179,11 @@ docs/
 
 ## Deployment
 
-Built as a container image and published to GitHub Container Registry.
-Kubernetes manifests and Helm charts live in the deployment repository.
+CI builds the image from the `Dockerfile` and pushes it to
+`ghcr.io/rsocc26/service-identity` on every merge to `main`, tagged `sha-<commit>` and
+`main` (version tags add `X.Y.Z` and `X.Y`). The image runs as a non-root user
+with a read-only root filesystem. Kubernetes manifests and Helm charts live in
+the deployment repository.
 
 ## Contributing
 
