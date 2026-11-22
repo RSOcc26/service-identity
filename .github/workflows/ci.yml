@@ -20,3 +20,12 @@ jobs:
     with:
       # Shared tenant-context schema
       contract-repositories: .github
+
+  # On main only: build the image and push it to ghcr.io/rsocc26/service-identity
+  publish:
+    needs: checks
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    uses: RSOcc26/.github/.github/workflows/reusable-publish.yml@main

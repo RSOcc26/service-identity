@@ -35,6 +35,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `GET /v1/internal/users/by-subject/{sub}` for the gateway.
 - Migration `user-lifecycle`: `users.status`, `given_name`, `family_name`,
   `deleted_at`; `outbox` and `idp_tasks` tables.
+- Container image (`Dockerfile`, non-root, runtime dependencies and migrations
+  only), published to `ghcr.io/rsocc26/service-identity` by CI on merge to `main`.
 
 ### Changed
 
