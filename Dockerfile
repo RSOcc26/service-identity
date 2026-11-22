@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Production image: runtime dependencies only, non-root, read-only friendly.
 # Migrations run at startup (src/data/migrate.js), so they are part of the image.
 
@@ -6,7 +5,7 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Install scripts stay on: @confluentinc/kafka-javascript fetches its prebuilt librdkafka binary
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev
 
 FROM node:24-alpine
 ENV NODE_ENV=production
