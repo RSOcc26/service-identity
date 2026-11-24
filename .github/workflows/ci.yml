@@ -29,3 +29,13 @@ jobs:
       contents: read
       packages: write
     uses: RSOcc26/.github/.github/workflows/reusable-publish.yml@main
+
+  deploy-dev:
+    needs: publish
+    if: needs.publish.outputs.image != ''
+    permissions:
+      contents: read
+      id-token: write
+    uses: RSOcc26/.github/.github/workflows/reusable-deploy.yml@main
+    with:
+      environment: dev
