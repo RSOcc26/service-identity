@@ -89,3 +89,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Removed
 
 - `OIDC_ISSUER` and `OIDC_JWKS_URL`: only the gateway talks to Keycloak.
+
+### Security
+
+- `glob` pinned to 14.0.2 through `overrides` (pulls `minimatch` 11.0.9),
+  fixing two moderate advisories in `node-pg-migrate`'s dependencies.
+  node-pg-migrate 9.0.0, the latest release, still requires glob ~13.0.0;
+  remove the override once a release accepts glob 14.0.2 or later.
